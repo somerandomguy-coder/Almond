@@ -56,7 +56,7 @@ impl Verifier for DatesVerifier {
             let mut msgs = Vec::new();
             let mut used = Vec::new();
             for d in &ds {
-                let before_meeting = d.qualifier != Qualifier::After && d.value.last_day() < r;
+                let before_meeting = d.qualifier == Qualifier::Deadline && d.value.last_day() < r;
                 let best = ev_d.iter().map(|(s, e)| (s, e, d.compare(e))).min_by_key(
                     |(_, _, m)| match m {
                         Match::Exact => 0,

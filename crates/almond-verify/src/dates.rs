@@ -52,6 +52,15 @@ impl DateVal {
         }
     }
 
+    /// First day covered by this value.
+    pub fn first_day(&self) -> NaiveDate {
+        match *self {
+            DateVal::Day { date } => date,
+            DateVal::Week { monday } => monday,
+            DateVal::Month { year, month } => NaiveDate::from_ymd_opt(year, month, 1).unwrap(),
+        }
+    }
+
     /// Last day covered by this value.
     pub fn last_day(&self) -> NaiveDate {
         match *self {

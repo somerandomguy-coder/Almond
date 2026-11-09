@@ -261,7 +261,11 @@ impl Verifier for CalendarVerifier {
                         "calendar": expected, "status": status}));
                 }
             }
-            if about_meeting {
+            // "họp lại tuần sau lúc 3h" talks about a *future* meeting, not this one.
+            let future = dates::extract(&c.text, idx.reference_day)
+                .iter()
+                .any(|d| d.value.first_day() > start_day);
+            if about_meeting && !future {
                 if let Some(start) = start {
                     for (h, m, surface) in times_of_day(&c.text) {
                         let ok = start.hour() == h && start.minute() == m;

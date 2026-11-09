@@ -56,12 +56,31 @@ impl Verifier for NumbersVerifier {
             let mut checks = Vec::new();
             let mut used = Vec::new();
             let mut msgs = Vec::new();
+            // Multiset matching: each evidence quantity backs at most one claim quantity, so
+            // "two frontend and two designer roles" vs "two frontend and one designer" fails.
+            let mut consumed = vec![false; ev_q.len()];
             for q in &qs {
-                if let Some((r, e)) = ev_q.iter().find(|(_, e)| q.matches(e)) {
+                let free = ev_q
+                    .iter()
+                    .enumerate()
+                    .find(|(k, (_, e))| !consumed[*k] && q.matches(e));
+                if let Some((k, (r, e))) = free {
+                    consumed[k] = true;
                     statuses.push(AtomStatus::Match);
                     used.push(r.span.clone());
                     checks.push(json!({"claim": q_json(q), "status": AtomStatus::Match,
                         "evidence": {"span": r.span, "quantity": q_json(e)}}));
+                    continue;
+                }
+                if let Some((r, e)) = ev_q.iter().find(|(_, e)| q.matches(e)) {
+                    statuses.push(AtomStatus::Conflict);
+                    used.push(r.span.clone());
+                    msgs.push(format!(
+                        "claim uses \"{}\" more often than the cited evidence does",
+                        q.surface
+                    ));
+                    checks.push(json!({"claim": q_json(q), "status": AtomStatus::Conflict,
+                        "reason": "already_consumed", "evidence": {"span": r.span, "quantity": q_json(e)}}));
                     continue;
                 }
                 let conflicting: Vec<_> = ev_q.iter().filter(|(_, e)| q.compatible(e)).collect();

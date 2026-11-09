@@ -21,5 +21,6 @@ unicode-normalization = "0.1"
 
 [dev-dependencies]
 almond-types = { path = "../almond-types", features = ["mock"] }
-reqwest = { version = "0.13.5", default-features = false, features = ["json"] }
+futures = "0.3.34"
+reqwest ={ version = "0.13.5", default-features = false, features = ["json"] }
 tokio = { version = "1.54.1", features = ["rt-multi-thread", "macros", "time"] }

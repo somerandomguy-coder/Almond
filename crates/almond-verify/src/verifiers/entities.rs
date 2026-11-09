@@ -69,16 +69,43 @@ impl Verifier for EntitiesVerifier {
             let mut msgs = Vec::new();
             let mut used = Vec::new();
             for n in &names {
-                let in_ev = ev.iter().find(|r| {
-                    mentions(&r.text, &n.surface)
-                        || r.speaker
-                            .as_deref()
-                            .is_some_and(|s| key(s) == key(&n.surface) || mentions(s, &n.surface))
+                let in_text = ev.iter().find(|r| mentions(&r.text, &n.surface));
+                let as_speaker = ev.iter().find(|r| {
+                    r.speaker
+                        .as_deref()
+                        .is_some_and(|s| key(s) == key(&n.surface) || mentions(s, &n.surface))
                 });
-                if let Some(r) = in_ev {
+                if let Some(r) = in_text {
                     used.push(r.span.clone());
                     statuses.push(AtomStatus::Match);
                     checks.push(json!({"name": n.surface, "status": AtomStatus::Match, "evidence": {"span": r.span}}));
+                    continue;
+                }
+                if let Some(r) = as_speaker {
+                    used.push(r.span.clone());
+                    // The speaker said it, but if the segment names someone else ("Mai sẽ liên
+                    // hệ ..." said by Tuấn) that person is the likely actor.
+                    let named: Vec<String> = extract(&r.text, &known)
+                        .into_iter()
+                        .map(|m| m.surface)
+                        .filter(|m| {
+                            key(m) != key(&n.surface)
+                                && idx.people.iter().any(|k| mentions(k, m) || key(k) == key(m))
+                        })
+                        .collect();
+                    let status = if named.is_empty() {
+                        AtomStatus::Match
+                    } else {
+                        msgs.push(format!(
+                            "\"{}\" is only the speaker of the cited segment, which names {} as the actor",
+                            n.surface,
+                            named.join(", ")
+                        ));
+                        AtomStatus::Uncited
+                    };
+                    statuses.push(status);
+                    checks.push(json!({"name": n.surface, "status": status, "as_speaker": true,
+                        "named_in_segment": named, "evidence": {"span": r.span}}));
                     continue;
                 }
                 let others: Vec<&String> = ev_people

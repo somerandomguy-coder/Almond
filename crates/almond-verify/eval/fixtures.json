@@ -1,0 +1,138 @@
+{
+  "about": "Hallucination fixtures for almond-verify (WS-H). Each meeting has a transcript, a calendar event and AI summary bullets with citations (segment indices). gold = ok | hallucinated; type names the injected error. Synthetic data, written for this eval.",
+  "meetings": [
+    {
+      "id": "m1-q4-planning",
+      "title": "Họp kế hoạch Q4",
+      "start": "2026-11-09T09:00:00+07:00",
+      "tz_offset_min": 420,
+      "duration_min": 45,
+      "attendees": [
+        {"name": "Nam", "email": "nam@almond.dev", "response": "accepted", "is_self": true},
+        {"name": "Lan", "email": "lan@almond.dev", "response": "accepted"},
+        {"name": "Minh", "email": "minh@almond.dev", "response": "accepted"},
+        {"name": "Hoa", "email": "hoa@almond.dev", "response": "accepted"}
+      ],
+      "speakers": {"me": "Nam", "S1": "Lan", "S2": "Minh", "S3": "Hoa"},
+      "transcript": [
+        ["me", "vi", "Chào mọi người, hôm nay mình chốt ngân sách Q4 và kế hoạch tuyển dụng."],
+        ["S1", "vi", "Ngân sách marketing Q4 là 200 triệu đồng, tăng 15% so với quý trước."],
+        ["S2", "vi", "Bên kỹ thuật cần tuyển hai kỹ sư backend trước tháng 12."],
+        ["me", "vi", "Ok, Lan sẽ gửi bản kế hoạch chi tiết trước thứ Sáu."],
+        ["S3", "vi", "Em đề xuất chuyển sang dùng Postgres, nhưng cần đánh giá thêm."],
+        ["me", "vi", "Vậy tuần sau họp lại để quyết vụ Postgres. Minh chuẩn bị demo cho buổi đó."],
+        ["S1", "vi", "Chi phí quảng cáo Facebook dự kiến khoảng 50 triệu mỗi tháng."]
+      ],
+      "bullets": [
+        {"text": "Ngân sách marketing Q4 là 200 triệu đồng.", "cites": [1], "gold": "ok"},
+        {"text": "Ngân sách marketing Q4 tăng 25% so với quý trước.", "cites": [1], "gold": "hallucinated", "type": "wrong_number"},
+        {"text": "Tuyển 2 kỹ sư backend trước tháng 12.", "cites": [2], "gold": "ok"},
+        {"text": "Minh gửi bản kế hoạch chi tiết trước thứ Sáu.", "cites": [3], "gold": "hallucinated", "type": "wrong_owner"},
+        {"text": "Lan gửi kế hoạch chi tiết trước thứ Năm.", "cites": [3], "gold": "hallucinated", "type": "wrong_date"},
+        {"text": "Nhóm đã quyết định chuyển sang Postgres.", "cites": [4], "gold": "hallucinated", "type": "invented_decision"},
+        {"text": "Tuần sau họp lại để quyết định về Postgres; Minh chuẩn bị demo.", "cites": [5], "gold": "ok"},
+        {"text": "Ngân sách tuyển dụng là 1 tỷ đồng.", "cites": [], "gold": "hallucinated", "type": "unsupported"},
+        {"text": "Chi phí quảng cáo Facebook khoảng 50 triệu đồng mỗi tháng.", "cites": [6], "gold": "ok"}
+      ]
+    },
+    {
+      "id": "m2-launch-sync",
+      "title": "v2.0 launch sync",
+      "start": "2026-11-05T14:00:00+07:00",
+      "tz_offset_min": 420,
+      "duration_min": 30,
+      "attendees": [
+        {"name": "Tom", "email": "tom@almond.dev", "response": "accepted", "is_self": true},
+        {"name": "Sarah Lee", "email": "sarah.lee@almond.dev", "response": "accepted"},
+        {"name": "David Chen", "email": "david.chen@almond.dev", "response": "accepted"},
+        {"name": "Priya", "email": "priya@almond.dev", "response": "declined"}
+      ],
+      "speakers": {"me": "Tom", "S1": "Sarah Lee", "S2": "David Chen"},
+      "transcript": [
+        ["me", "en", "Let's go through the launch checklist for version 2.0."],
+        ["S1", "en", "The beta had 1,200 active users last week, and churn dropped to 4 percent."],
+        ["S2", "en", "We agreed to push the launch to November 20 because the payment flow still has bugs."],
+        ["S1", "en", "I'll draft the release notes by Monday."],
+        ["S2", "en", "I can take the load testing, but I need two more days."],
+        ["me", "en", "Priya couldn't make it today, I'll brief her tomorrow."],
+        ["S1", "en", "Marketing wants a $15k budget for the launch campaign; we haven't approved it yet."]
+      ],
+      "bullets": [
+        {"text": "The beta had 1,200 active users last week.", "cites": [1], "gold": "ok"},
+        {"text": "Churn dropped to 2%.", "cites": [1], "gold": "hallucinated", "type": "wrong_number"},
+        {"text": "The launch moved to November 20 because of payment-flow bugs.", "cites": [2], "gold": "ok"},
+        {"text": "The launch was pushed to November 27.", "cites": [2], "gold": "hallucinated", "type": "wrong_date"},
+        {"text": "Sarah will draft the release notes by Monday.", "cites": [3], "gold": "ok"},
+        {"text": "David will draft the release notes by Monday.", "cites": [3], "gold": "hallucinated", "type": "wrong_owner"},
+        {"text": "The team approved a $15k budget for the launch campaign.", "cites": [6], "gold": "hallucinated", "type": "invented_decision"},
+        {"text": "Priya did not attend the meeting.", "cites": [5], "gold": "ok"},
+        {"text": "Customer support will be staffed around the clock during launch week.", "cites": [0], "gold": "hallucinated", "type": "unsupported"},
+        {"text": "David will handle load testing.", "cites": [4], "gold": "ok"}
+      ]
+    },
+    {
+      "id": "m3-standup",
+      "title": "Daily standup",
+      "start": "2026-11-06T10:00:00+07:00",
+      "tz_offset_min": 420,
+      "duration_min": 15,
+      "attendees": [
+        {"name": "Đức", "email": "duc@almond.dev", "response": "accepted", "is_self": true},
+        {"name": "An", "email": "an@almond.dev", "response": "accepted"},
+        {"name": "Bình", "email": "binh@almond.dev", "response": "accepted"},
+        {"name": "Chi", "email": "chi@almond.dev", "response": "accepted"}
+      ],
+      "speakers": {"me": "Đức", "S1": "An", "S2": "Bình", "S3": "Chi"},
+      "transcript": [
+        ["me", "vi", "Standup nhanh nhé, sprint này còn 3 ngày."],
+        ["S1", "vi", "API thanh toán xong 80%, em cần thêm review từ anh Bình."],
+        ["S2", "vi", "Ok, anh review trong hôm nay. Deadline release là 2026-11-12."],
+        ["S3", "vi", "Bug login trên Android đã fix, còn iOS thì chưa."],
+        ["me", "vi", "Chi lo luôn bản iOS, cố xong trước thứ Tư tuần sau nhé."]
+      ],
+      "bullets": [
+        {"text": "API thanh toán đã hoàn thành 80%.", "cites": [1], "gold": "ok"},
+        {"text": "API thanh toán đã hoàn thành 90%.", "cites": [1], "gold": "hallucinated", "type": "wrong_number"},
+        {"text": "Bình review API thanh toán trong hôm nay.", "cites": [1, 2], "gold": "ok"},
+        {"text": "Deadline release là 12/11.", "cites": [2], "gold": "ok"},
+        {"text": "Deadline release là 15/11.", "cites": [2], "gold": "hallucinated", "type": "wrong_date"},
+        {"text": "Bug login đã được fix trên cả Android và iOS.", "cites": [3], "gold": "hallucinated", "type": "invented_decision"},
+        {"text": "Chi phụ trách sửa bug iOS, hạn trước thứ Tư tuần sau.", "cites": [4], "gold": "ok"},
+        {"text": "An phụ trách sửa bug iOS.", "cites": [4], "gold": "hallucinated", "type": "wrong_owner"},
+        {"text": "Cuộc họp bắt đầu lúc 9h sáng.", "cites": [0], "gold": "hallucinated", "type": "wrong_meeting_time"}
+      ]
+    },
+    {
+      "id": "m4-customer",
+      "title": "Trao đổi hợp đồng bảo trì",
+      "start": "2026-11-04T14:00:00+07:00",
+      "tz_offset_min": 420,
+      "duration_min": 60,
+      "attendees": [
+        {"name": "Tuấn", "email": "tuan@almond.dev", "response": "accepted", "is_self": true},
+        {"name": "Mai", "email": "mai@almond.dev", "response": "accepted"},
+        {"name": "Hùng", "email": "hung@customer.vn", "response": "accepted"}
+      ],
+      "speakers": {"me": "Tuấn", "S1": "Hùng", "S2": "Mai"},
+      "transcript": [
+        ["me", "vi", "Cảm ơn anh Hùng đã dành thời gian. Hôm nay mình trao đổi về hợp đồng bảo trì."],
+        ["S1", "vi", "Bên anh chấp nhận giá 1,5 tỷ cho năm đầu, thanh toán làm hai đợt."],
+        ["S2", "vi", "Bên em sẽ gửi dự thảo hợp đồng trước ngày 15 tháng 11."],
+        ["S1", "vi", "Còn phần đào tạo thì để tháng sau tính."],
+        ["me", "vi", "Vâng, Mai sẽ liên hệ chị Thảo bên pháp chế để rà soát hợp đồng."]
+      ],
+      "bullets": [
+        {"text": "Khách hàng chấp nhận giá 1,5 tỷ đồng cho năm đầu.", "cites": [1], "gold": "ok"},
+        {"text": "Khách hàng chấp nhận giá 1,2 tỷ cho năm đầu.", "cites": [1], "gold": "hallucinated", "type": "wrong_number"},
+        {"text": "Thanh toán chia làm hai đợt.", "cites": [1], "gold": "ok"},
+        {"text": "Thanh toán chia làm ba đợt.", "cites": [1], "gold": "hallucinated", "type": "wrong_number"},
+        {"text": "Mai gửi dự thảo hợp đồng trước 15/11.", "cites": [2], "gold": "ok"},
+        {"text": "Mai gửi dự thảo hợp đồng trước ngày 10 tháng 11.", "cites": [2], "gold": "hallucinated", "type": "wrong_date"},
+        {"text": "Hai bên đã thống nhất đưa gói đào tạo vào hợp đồng.", "cites": [3], "gold": "hallucinated", "type": "invented_decision"},
+        {"text": "Phần đào tạo sẽ được bàn vào tháng sau.", "cites": [3], "gold": "ok"},
+        {"text": "Tuấn sẽ liên hệ chị Thảo bên pháp chế để rà soát hợp đồng.", "cites": [4], "gold": "hallucinated", "type": "wrong_owner"},
+        {"text": "Khách hàng yêu cầu bảo hành 24 tháng.", "cites": [], "gold": "hallucinated", "type": "unsupported"}
+      ]
+    }
+  ]
+}

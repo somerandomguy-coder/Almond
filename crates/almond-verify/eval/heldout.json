@@ -1,0 +1,62 @@
+{
+  "about": "Held-out fixtures, written AFTER the verifiers were tuned on fixtures.json and never used for tuning. Includes cross-lingual bullets (EN summary of a VI meeting).",
+  "meetings": [
+    {
+      "id": "h1-campaign-review",
+      "title": "Review chiến dịch tháng 10",
+      "start": "2026-11-10T15:00:00+07:00",
+      "tz_offset_min": 420,
+      "duration_min": 30,
+      "attendees": [
+        {"name": "Khoa", "email": "khoa@almond.dev", "response": "accepted", "is_self": true},
+        {"name": "Phương", "email": "phuong@almond.dev", "response": "accepted"},
+        {"name": "Linh", "email": "linh@almond.dev", "response": "accepted"}
+      ],
+      "speakers": {"me": "Khoa", "S1": "Phương", "S2": "Linh"},
+      "transcript": [
+        ["me", "vi", "Mình review nhanh kết quả chiến dịch tháng 10 nhé."],
+        ["S1", "vi", "Doanh thu tháng 10 đạt hai tỷ ba, vượt chỉ tiêu 10 phần trăm."],
+        ["S2", "vi", "Chi phí quảng cáo hết 300tr, hơi cao so với dự kiến."],
+        ["me", "vi", "Tháng 11 mình giảm ngân sách quảng cáo xuống 250 triệu."],
+        ["S1", "vi", "Linh làm báo cáo tổng kết gửi ban giám đốc trước thứ Hai tuần sau."]
+      ],
+      "bullets": [
+        {"text": "October revenue reached 2.3 billion VND, 10% above target.", "cites": [1], "gold": "ok"},
+        {"text": "October revenue exceeded the target by 15%.", "cites": [1], "gold": "hallucinated", "type": "wrong_number"},
+        {"text": "Ad spend was 300 million VND.", "cites": [2], "gold": "ok"},
+        {"text": "The ad budget for November is cut to 250 million.", "cites": [3], "gold": "ok"},
+        {"text": "Phương will send the summary report to the board.", "cites": [4], "gold": "hallucinated", "type": "wrong_owner"},
+        {"text": "Linh sends the report to the board by this Friday.", "cites": [4], "gold": "hallucinated", "type": "wrong_date"},
+        {"text": "The team decided to stop Facebook ads.", "cites": [2], "gold": "hallucinated", "type": "invented_decision"}
+      ]
+    },
+    {
+      "id": "h2-hiring",
+      "title": "Hiring sync",
+      "start": "2026-11-11T11:00:00+07:00",
+      "tz_offset_min": 420,
+      "duration_min": 30,
+      "attendees": [
+        {"name": "Ben", "email": "ben@almond.dev", "response": "accepted", "is_self": true},
+        {"name": "Alice", "email": "alice@almond.dev", "response": "accepted"},
+        {"name": "Carla", "email": "carla@almond.dev", "response": "declined"}
+      ],
+      "speakers": {"me": "Ben", "S1": "Alice"},
+      "transcript": [
+        ["S1", "en", "We have 3 open roles: two frontend and one designer."],
+        ["me", "en", "The designer offer went out yesterday at 45k a year."],
+        ["S1", "en", "Let's close the frontend roles before the end of December."],
+        ["me", "en", "Carla is out sick, so I'll update her later."]
+      ],
+      "bullets": [
+        {"text": "There are three open roles.", "cites": [0], "gold": "ok"},
+        {"text": "There are two frontend roles and two designer roles open.", "cites": [0], "gold": "hallucinated", "type": "wrong_number"},
+        {"text": "The designer offer was $45k per year.", "cites": [1], "gold": "ok"},
+        {"text": "The designer accepted the offer.", "cites": [1], "gold": "hallucinated", "type": "unsupported"},
+        {"text": "Frontend roles should be filled by the end of December.", "cites": [2], "gold": "ok"},
+        {"text": "Carla attended the meeting.", "cites": [3], "gold": "hallucinated", "type": "wrong_attendee"},
+        {"text": "Carla was absent.", "cites": [3], "gold": "ok"}
+      ]
+    }
+  ]
+}

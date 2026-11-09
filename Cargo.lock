@@ -147,6 +147,7 @@ dependencies = [
  "ascent",
  "async-trait",
  "chrono",
+ "futures",
  "reqwest",
  "serde",
  "serde_json",

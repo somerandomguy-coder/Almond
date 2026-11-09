@@ -158,7 +158,6 @@ fn is_date_prefix(w: &str) -> bool {
             | "dec"
             | "week"
             | "quarter"
-            | "at"
     ) || (w == "năm")
 }
 
@@ -223,6 +222,8 @@ fn is_classifier(w: &str) -> bool {
             | "thành"
             | "khoản"
             | "buổi"
+            | "đợt"
+            | "giai"
             | "trường"
             | "công"
             | "lập"
@@ -362,7 +363,26 @@ fn parse_at(toks: &[Token], i: usize, chars: &[char]) -> Option<(Quantity, usize
                     continue;
                 }
                 if let Some(u) = unit_value(w) {
-                    cur += u;
+                    // VI ellipsis: "hai tỷ ba" = 2.3 tỷ, "ba trăm hai" = 320 — a lone trailing
+                    // digit word right after a scale counts in the next lower order.
+                    let after_scale = j > i
+                        && matches!(
+                            toks[j - 1].lower.as_str(),
+                            "trăm" | "nghìn" | "ngàn" | "triệu" | "tỷ" | "tỉ"
+                        );
+                    let last = !toks
+                        .get(j + 1)
+                        .is_some_and(|n| n.kind == TokKind::Word && is_number_word(&n.lower));
+                    let vi_unit = !w.is_ascii();
+                    if after_scale && last && (vi_unit || w == "ba" || w == "hai") {
+                        let sc = match toks[j - 1].lower.as_str() {
+                            "trăm" => 100.0,
+                            other => scale_value(other).unwrap_or(10.0),
+                        };
+                        cur += u * sc / 10.0;
+                    } else {
+                        cur += u;
+                    }
                     after_tens = false;
                 } else if let Some(u) = inner_unit_value(w) {
                     if !after_tens && !matches!(toks[j - 1].lower.as_str(), "linh" | "lẻ") {
@@ -542,6 +562,9 @@ mod tests {
         assert_eq!(vals("hai triệu rưỡi"), [2.5e6]);
         assert_eq!(vals("hai mươi lăm người"), [25.0]);
         assert_eq!(vals("200.000.000 đ"), [2e8]);
+        assert_eq!(vals("doanh thu đạt hai tỷ ba"), [2.3e9]);
+        assert_eq!(vals("ba trăm hai khách"), [320.0]);
+        assert_eq!(vals("offer at 45k a year"), [45_000.0]);
         let q = &extract("300 triệu đồng")[0];
         assert_eq!(
             q.kind,

@@ -235,7 +235,7 @@ pub fn heuristic(
         people
             .iter()
             .find(|p| p.span.0 == toks.first().map(|t| t.span.0).unwrap_or(usize::MAX))
-            .or_else(|| people.first())
+            .or_else(|| people.iter().find(|p| p.known_person))
             .map(|p| p.surface.clone())
     });
     if let Some(o) = owner_name {
@@ -254,9 +254,16 @@ pub fn heuristic(
                 .cloned()
         });
     if let Some(d) = due_expr {
+        // Only "by / before / trước X" (or an explicit action-item due) is a deadline; a plain
+        // date ("October revenue", "on Nov 20") is just the date of the fact.
+        let p = if due.is_some() || d.qualifier == Qualifier::Deadline {
+            "due"
+        } else {
+            "date"
+        };
         out.triples.push(Triple {
             s: action.clone(),
-            p: "due".into(),
+            p: p.into(),
             o: Literal::Date {
                 value: d.value,
                 qualifier: d.qualifier,

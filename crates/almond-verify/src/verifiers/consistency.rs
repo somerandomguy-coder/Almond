@@ -4,13 +4,21 @@
 //!
 //! Rules (program `consistency.v1`):
 //! ```text
-//! conflict(C1,C2,S,P,O1,O2)    <- triple(C1,S,P,T,O1), triple(C2,S,P,T,O2), functional(P), C1<C2, O1!=O2.
-//! owner_not_attendee(C,S,W)    <- owner(C,S,W), !attendee(W).          (only when attendees are known)
-//! due_before_meeting(C,S,D,M)  <- due_day(C,S,D), meeting_day(M), D<M.
+//! conflict(C1,C2,S,P,O1,O2)   <- triple(C1,S,P,T,O1), triple(C2,S,P,T,O2), functional(P), C1<C2, O1!=O2.
+//! clash(C,D,S,P,O,OD)         <- conflict(C,D,S,P,O,OD).   clash(D,C,S,P,OD,O) <- conflict(C,D,S,P,O,OD).
+//! blamed(C,D,S,P,O,OD)        <- clash(C,D,S,P,O,OD), grounded(D,P,OD), !grounded(C,P,O).
+//! unresolved(C,D,S,P,O,OD)    <- clash(C,D,S,P,O,OD), !grounded(C,P,O), !grounded(D,P,OD).
+//! owner_not_attendee(C,S,W)   <- owner(C,S,W), !attendee(W).          (only when attendees are known)
+//! due_before_meeting(C,S,D,M) <- due_day(C,S,D), meeting_day(M), D<M.
 //! ```
+//!
+//! `grounded(C,P,O)` is computed in Rust: the literal O of claim C occurs in C's *cited* evidence
+//! (same number / same resolved date / person mentioned or speaking). It turns a symmetric
+//! conflict into a blame assignment: when two claims disagree and only one is grounded, the other
+//! one is contradicted; when neither is grounded, both need review; when both are, nothing fires.
 
 use super::{VerifyConfig, verdict};
-use crate::evidence::EvidenceIndex;
+use crate::evidence::{EvidenceIndex, ResolvedSpan, mentions};
 use crate::names;
 use crate::triples::{self, Literal, TriplesV1, canonical_predicate, subject_key};
 use almond_types::artifact::body::{Claim, Verdict, VerdictLabel};
@@ -41,6 +49,17 @@ ascent! {
         triple(c1, s, p, t, o1), triple(c2, s, p, t, o2), functional(p),
         if c1 < c2, if o1 != o2;
 
+    // claim, predicate, canonical value: the value occurs in the claim's cited evidence
+    relation grounded(String, String, String);
+    relation clash(String, String, String, String, String, String);
+    clash(c1, c2, s, p, o1, o2) <-- conflict(c1, c2, s, p, o1, o2);
+    clash(c2, c1, s, p, o2, o1) <-- conflict(c1, c2, s, p, o1, o2);
+    relation blamed(String, String, String, String, String, String);
+    blamed(c, d, s, p, o, od) <-- clash(c, d, s, p, o, od), grounded(d, p, od), !grounded(c, p, o);
+    relation unresolved(String, String, String, String, String, String);
+    unresolved(c, d, s, p, o, od) <--
+        clash(c, d, s, p, o, od), !grounded(c, p, o), !grounded(d, p, od);
+
     relation owner_not_attendee(String, String, String);
     owner_not_attendee(c, s, w) <-- owner(c, s, w), !attendee(w);
 
@@ -66,6 +85,33 @@ impl Default for ConsistencyVerifier {
 
 fn fact(rel: &str, args: &[Value]) -> Value {
     json!({"rel": rel, "args": args})
+}
+
+/// Does the literal occur in the cited evidence? (numbers by value, dates by resolved value,
+/// people by mention or as the segment's speaker).
+fn grounded(o: &Literal, ev: &[ResolvedSpan], r: chrono::NaiveDate) -> bool {
+    match o {
+        Literal::Number { value, .. }
+        | Literal::Money { value, .. }
+        | Literal::Percent { value, .. } => ev.iter().any(|s| {
+            crate::numbers::extract(&s.text)
+                .iter()
+                .any(|q| (q.value - value).abs() <= 1e-6 * value.abs().max(1.0))
+        }),
+        Literal::Date { value, .. } => ev.iter().any(|s| {
+            crate::dates::extract(&s.text, r)
+                .iter()
+                .any(|d| d.value == *value)
+        }),
+        Literal::Person { name } | Literal::Entity { name } => ev.iter().any(|s| {
+            mentions(&s.text, name)
+                || s
+                    .speaker
+                    .as_deref()
+                    .is_some_and(|sp| mentions(sp, name) || names::key(sp) == names::key(name))
+        }),
+        Literal::Text { .. } => false,
+    }
 }
 
 /// Triples of a claim: its logical form if it is `triples.v1`, else (optionally) heuristics.
@@ -127,6 +173,7 @@ impl Verifier for ConsistencyVerifier {
             let Some(t) = claim_triples(c, self.derive_missing, &idx.people, r) else {
                 continue;
             };
+            let ev = idx.resolve_all(&c.evidence);
             for tr in &t.triples {
                 let s = subject_key(&tr.s);
                 let pred = canonical_predicate(&tr.p);
@@ -146,6 +193,9 @@ impl Verifier for ConsistencyVerifier {
                     p.due_day
                         .push((c.id.clone(), s.clone(), value.last_day().num_days_from_ce()));
                 }
+                if grounded(&tr.o, &ev, r) {
+                    p.grounded.push((c.id.clone(), pred.clone(), val.clone()));
+                }
                 p.triple.push((c.id.clone(), s, pred, ty, val));
             }
         }
@@ -154,35 +204,69 @@ impl Verifier for ConsistencyVerifier {
         // claim id -> (label, confidence, explanation, derivation)
         let mut findings: BTreeMap<String, Vec<(VerdictLabel, f32, String, Value)>> =
             BTreeMap::new();
-        for (c1, c2, s, pr, o1, o2) in &p.conflict {
-            let t1 = p
-                .triple
+        let ty_of = |c: &String, s: &String, pr: &String, o: &String| {
+            p.triple
                 .iter()
-                .find(|t| &t.0 == c1 && &t.1 == s && &t.2 == pr && &t.4 == o1);
-            let ty = t1.map(|t| t.3.clone()).unwrap_or_default();
-            let deriv = json!({
+                .find(|t| &t.0 == c && &t.1 == s && &t.2 == pr && &t.4 == o)
+                .map(|t| t.3.clone())
+                .unwrap_or_default()
+        };
+        let conflict_proof = |c: &String, d: &String, s: &String, pr: &String, o: &String, od: &String| {
+            let ty = ty_of(c, s, pr, o);
+            json!({
                 "rule": "functional_conflict",
-                "head": fact("conflict", &[json!(c1), json!(c2), json!(s), json!(pr), json!(o1), json!(o2)]),
+                "head": fact("clash", &[json!(c), json!(d), json!(s), json!(pr), json!(o), json!(od)]),
                 "body": [
-                    fact("triple", &[json!(c1), json!(s), json!(pr), json!(ty), json!(o1)]),
-                    fact("triple", &[json!(c2), json!(s), json!(pr), json!(ty), json!(o2)]),
+                    fact("triple", &[json!(c), json!(s), json!(pr), json!(ty), json!(o)]),
+                    fact("triple", &[json!(d), json!(s), json!(pr), json!(ty), json!(od)]),
                     fact("functional", &[json!(pr)]),
+                    {"builtin": "!=", "args": [o, od]},
                 ]
-            });
-            for (me, other, mine, theirs) in [(c1, c2, o1, o2), (c2, c1, o2, o1)] {
-                let other_text = by_id
-                    .get(other.as_str())
-                    .map(|c| c.text.as_str())
-                    .unwrap_or("");
-                findings.entry(me.clone()).or_default().push((
-                    VerdictLabel::NeedsReview,
-                    0.7,
-                    format!(
-                        "Conflicts with claim {other} (\"{other_text}\"): {pr} of \"{s}\" is {mine} here but {theirs} there."
-                    ),
-                    deriv.clone(),
-                ));
-            }
+            })
+        };
+        let text_of = |id: &String| {
+            by_id
+                .get(id.as_str())
+                .map(|c| c.text.clone())
+                .unwrap_or_default()
+        };
+        for (c, d, s, pr, o, od) in &p.blamed {
+            findings.entry(c.clone()).or_default().push((
+                VerdictLabel::Contradicted,
+                0.8,
+                format!(
+                    "Conflicts with claim {d} (\"{}\"): {pr} of \"{s}\" is {o} here but {od} there, and only {od} is backed by the cited evidence.",
+                    text_of(d)
+                ),
+                json!({
+                    "rule": "blamed",
+                    "head": fact("blamed", &[json!(c), json!(d), json!(s), json!(pr), json!(o), json!(od)]),
+                    "body": [
+                        conflict_proof(c, d, s, pr, o, od),
+                        fact("grounded", &[json!(d), json!(pr), json!(od)]),
+                        {"not": fact("grounded", &[json!(c), json!(pr), json!(o)])},
+                    ]
+                }),
+            ));
+        }
+        for (c, d, s, pr, o, od) in &p.unresolved {
+            findings.entry(c.clone()).or_default().push((
+                VerdictLabel::NeedsReview,
+                0.6,
+                format!(
+                    "Conflicts with claim {d} (\"{}\"): {pr} of \"{s}\" is {o} here but {od} there; neither is backed by the cited evidence.",
+                    text_of(d)
+                ),
+                json!({
+                    "rule": "unresolved",
+                    "head": fact("unresolved", &[json!(c), json!(d), json!(s), json!(pr), json!(o), json!(od)]),
+                    "body": [
+                        conflict_proof(c, d, s, pr, o, od),
+                        {"not": fact("grounded", &[json!(c), json!(pr), json!(o)])},
+                        {"not": fact("grounded", &[json!(d), json!(pr), json!(od)])},
+                    ]
+                }),
+            ));
         }
         for (c, s, w) in &p.owner_not_attendee {
             findings.entry(c.clone()).or_default().push((
