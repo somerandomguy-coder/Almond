@@ -1,10 +1,11 @@
 //! Per-segment language routing for mixed-language meetings (ARCHITECTURE §10).
 //!
-//! [`RoutedEngine`] splits audio into <= 28 s VAD windows, identifies each window's language
-//! (restricted to `allowed_languages`, e.g. vi/en) with a [`LanguageId`] model, and sends the
-//! window to the engine routed for that language (vi -> PhoWhisper, en -> whisper-turbo, ...).
+//! [`RoutedEngine`] splits audio into utterances (energy VAD), identifies each utterance's
+//! language (restricted to `allowed_languages`, e.g. vi/en) with a [`LanguageId`] model, packs
+//! consecutive same-language utterances into <= 28 s windows, and sends each window to the engine
+//! routed for that language (vi -> PhoWhisper / Zipformer, en -> whisper-turbo, ...).
 
-use crate::audio::{pack_windows, samples_to_ms};
+use crate::audio::{VadParams, ms_to_samples, pack_windows, samples_to_ms, split_on_silence};
 use crate::transcript::{ChannelSegments, build_transcript};
 use almond_types::artifact::body::{Segment, Transcript};
 use almond_types::meeting::AudioChannel;
@@ -74,20 +75,29 @@ impl SttEngine for RoutedEngine {
         opts: &SttOptions,
     ) -> Result<Vec<Segment>> {
         let mut out: Vec<Segment> = vec![];
-        for (a, b) in pack_windows(samples) {
+        let windows: Vec<(usize, usize, LangTag)> = match &opts.language {
+            Some(l) => pack_windows(samples)
+                .into_iter()
+                .map(|(a, b)| (a, b, l.clone()))
+                .collect(),
+            None => {
+                // Language per utterance (VAD region), then pack same-language neighbours.
+                let lid = self.lid.clone();
+                let x = samples.to_vec();
+                let allowed = opts.allowed_languages.clone();
+                let regions = tokio::task::spawn_blocking(move || {
+                    split_on_silence(&x, &VadParams::default())
+                        .into_iter()
+                        .map(|(a, b)| Ok((a, b, lid.identify(&x[a..b], &allowed)?.0)))
+                        .collect::<Result<Vec<_>>>()
+                })
+                .await
+                .map_err(Error::other)??;
+                pack_same_language(regions)
+            }
+        };
+        for (a, b, lang) in windows {
             let win = &samples[a..b];
-            let lang = match &opts.language {
-                Some(l) => l.clone(),
-                None => {
-                    let lid = self.lid.clone();
-                    let w = win.to_vec();
-                    let allowed = opts.allowed_languages.clone();
-                    tokio::task::spawn_blocking(move || lid.identify(&w, &allowed))
-                        .await
-                        .map_err(Error::other)??
-                        .0
-                }
-            };
             let mut o = opts.clone();
             o.language = Some(lang.clone());
             let segs = self
@@ -112,6 +122,22 @@ impl SttEngine for RoutedEngine {
             None => self.fallback.start_stream(opts),
         }
     }
+}
+
+/// Merge consecutive same-language regions into decode windows (<= 28 s, gaps <= 5 s).
+pub fn pack_same_language(regions: Vec<(usize, usize, LangTag)>) -> Vec<(usize, usize, LangTag)> {
+    let max = ms_to_samples(28_000);
+    let max_gap = ms_to_samples(5_000);
+    let mut out: Vec<(usize, usize, LangTag)> = vec![];
+    for (a, b, l) in regions {
+        match out.last_mut() {
+            Some((s, e, pl)) if *pl == l && b - *s <= max && a.saturating_sub(*e) <= max_gap => {
+                *e = b
+            }
+            _ => out.push((a, b, l)),
+        }
+    }
+    out
 }
 
 /// Audio of one meeting, per channel (16 kHz mono f32, all starting at meeting t=0).
@@ -214,6 +240,20 @@ mod tests {
         assert_eq!(segs.len(), 1);
         assert_eq!(segs[0].text, "hello");
         assert!(segs[0].t0_ms >= 1000);
+    }
+
+    #[test]
+    fn packs_only_same_language_neighbours() {
+        let s = |sec: usize| sec * 16_000;
+        let w = pack_same_language(vec![
+            (s(0), s(3), LangTag::vi()),
+            (s(4), s(6), LangTag::vi()),
+            (s(7), s(9), LangTag::en()),
+            (s(10), s(12), LangTag::vi()),
+        ]);
+        let langs: Vec<_> = w.iter().map(|x| x.2.0.as_str()).collect();
+        assert_eq!(langs, vec!["vi", "en", "vi"]);
+        assert_eq!((w[0].0, w[0].1), (0, s(6)));
     }
 
     #[tokio::test]

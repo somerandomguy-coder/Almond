@@ -13,8 +13,10 @@
 
 use almond_stt::models::ModelManager;
 use almond_stt::router::{LanguageId, MeetingAudio, RoutedEngine, transcribe_meeting};
+use almond_stt::transcript::{ChannelSegments, build_transcript};
 use almond_types::LangTag;
 use almond_types::artifact::body::Transcript;
+use almond_types::meeting::AudioChannel;
 use almond_types::stt::{Diarizer, SttEngine, SttOptions};
 use std::collections::BTreeMap;
 use std::sync::Arc;
@@ -145,9 +147,35 @@ async fn main() {
         word_timestamps: true,
         ..Default::default()
     };
-    let t: Transcript = transcribe_meeting(&routed, diarizer.as_deref(), &audio, &opts, speakers)
-        .await
-        .unwrap();
+    // Same steps as `router::transcribe_meeting`, unrolled to log per-stage timing.
+    let _ = transcribe_meeting; // (library entry point used by the app)
+    let mut cs = ChannelSegments::default();
+    let stage = |name: &str, t: Instant| eprintln!("  {name}: {:.1} s", t.elapsed().as_secs_f64());
+    for (ch, x) in [
+        (AudioChannel::Mic, &audio.mic),
+        (AudioChannel::System, &audio.system),
+        (AudioChannel::Mixed, &audio.mixed),
+    ] {
+        let Some(x) = x else { continue };
+        let t = Instant::now();
+        let segs = routed.transcribe(x, 0, ch, &opts).await.unwrap();
+        stage(&format!("transcribe {ch:?} ({} segments)", segs.len()), t);
+        let turns = match &diarizer {
+            Some(d) if ch != AudioChannel::Mic && !segs.is_empty() => {
+                let t = Instant::now();
+                let turns = d.diarize(x, speakers).await.unwrap();
+                stage(&format!("diarize {ch:?} ({} turns)", turns.len()), t);
+                Some(turns)
+            }
+            _ => None,
+        };
+        match ch {
+            AudioChannel::Mic => cs.mic = segs,
+            AudioChannel::System => (cs.system, cs.system_turns) = (segs, turns),
+            AudioChannel::Mixed => (cs.mixed, cs.mixed_turns) = (segs, turns),
+        }
+    }
+    let t: Transcript = build_transcript(cs);
     let t_done = Instant::now();
 
     let json = serde_json::to_string_pretty(&t).unwrap();

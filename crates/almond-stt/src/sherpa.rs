@@ -272,8 +272,13 @@ pub struct DiarizerConfig {
 impl Default for DiarizerConfig {
     fn default() -> Self {
         DiarizerConfig {
-            threads: default_threads(),
-            threshold: 0.5,
+            // embedding extraction dominates; 10 threads: RTF 0.15 vs 0.25 with 4 (30-min file)
+            threads: std::thread::available_parallelism()
+                .map(|n| n.get().min(8) as i32)
+                .unwrap_or(4),
+            // Tuned on the synthetic meeting (eval/stt/RESULTS.md): 0.5 split 5 true speakers
+            // into 48 labels; 1.0 gives ~1 label per speaker at 99.5% attribution accuracy.
+            threshold: 1.0,
             min_duration_on: 0.3,
             min_duration_off: 0.5,
         }
