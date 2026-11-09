@@ -11,9 +11,25 @@ license = "MIT"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 
+# Day-to-day dev builds: less debug info = faster builds, smaller target/.
+[profile.dev]
+debug = "line-tables-only"
+
+# Optimize dependencies even in dev builds: audio/STT/sync code is unusably slow at opt-level 0,
+# and dependencies are compiled once and cached, so this costs little.
+[profile.dev.package."*"]
+opt-level = 2
+
+# `--release` is used for evals and local runs: fast code, but quick to build
+# (thin local LTO, parallel codegen).
 [profile.release]
+opt-level = 3
+strip = "debuginfo"
+
+# Installers only (`cargo build --profile dist`, Tauri bundling): slowest build, smallest/fastest binary.
+[profile.dist]
+inherits = "release"
 codegen-units = 1
 lto = true
-opt-level = 3
 panic = "abort"
 strip = true
