@@ -177,6 +177,12 @@ impl Inner {
             .connect(addr, alpn)
             .await
             .map_err(|e| Error::Network(format!("connect {peer}: {e}")))?;
+        let working = remote_ip_addrs(&conn);
+        if !working.is_empty() {
+            let _ = self
+                .book
+                .note_addrs(peer, working.iter().map(|a| a.to_string()).collect());
+        }
         let (send, recv) = conn
             .open_bi()
             .await
@@ -592,6 +598,27 @@ impl Transport for IrohTransport {
 
 // ------------------------------------------------------------------ handlers
 
+/// Direct IP addresses the remote is reachable at, from the live connection's paths. iroh sends
+/// from its bound socket, so on a LAN the source address is the peer's listening address; this
+/// is how the *host* side of a pairing (and every later incoming sync) learns where to dial
+/// back, even without mDNS.
+fn remote_ip_addrs(conn: &endpoint::Connection) -> Vec<SocketAddr> {
+    let paths = conn.paths();
+    let mut v: Vec<SocketAddr> = vec![];
+    for p in paths.iter() {
+        if let TransportAddr::Ip(a) = p.remote_addr()
+            && !v.contains(a)
+        {
+            if p.is_selected() {
+                v.insert(0, *a);
+            } else {
+                v.push(*a);
+            }
+        }
+    }
+    v
+}
+
 struct SyncHandler(Arc<Inner>);
 struct PairHandler(Arc<Inner>);
 
@@ -613,6 +640,14 @@ impl ProtocolHandler for SyncHandler {
             tracing::info!("rejecting sync from unpaired device {peer}");
             conn.close(403u32.into(), b"not paired");
             return Ok(());
+        }
+        let addrs = remote_ip_addrs(&conn);
+        if !addrs.is_empty() {
+            let _ = self
+                .0
+                .book
+                .note_addrs(&peer, addrs.iter().map(|a| a.to_string()).collect());
+            self.0.note_seen(peer.clone(), addrs, None);
         }
         let (send, recv) = conn.accept_bi().await?;
         let c = IrohConnection {
@@ -647,6 +682,7 @@ impl ProtocolHandler for PairHandler {
             conn.close(403u32.into(), b"no pairing session");
             return Ok(());
         };
+        inner.note_seen(peer.clone(), remote_ip_addrs(&conn), None);
         let (send, recv) = conn.accept_bi().await?;
         let mut c = IrohConnection {
             peer: peer.clone(),
