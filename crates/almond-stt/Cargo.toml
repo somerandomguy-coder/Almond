@@ -3,6 +3,56 @@ name = "almond-stt"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+description = "Almond speech-to-text: whisper.cpp + sherpa-onnx engines, pseudo-streaming, diarization, model manager, WER/CER"
+
+[features]
+default = ["download"]
+# Resumable HTTP model downloads (ureq + rustls). Without it, models must be placed manually.
+download = ["dep:ureq", "dep:tar", "dep:bzip2"]
+# whisper.cpp engine (PhoWhisper, whisper-large-v3-turbo, ...). CPU build.
+whisper = ["dep:whisper-rs"]
+# GPU back-ends for whisper.cpp. `cuda` needs the CUDA toolkit (nvcc) on PATH;
+# `vulkan` needs the Vulkan SDK (VULKAN_SDK env var + glslc).
+cuda = ["whisper", "whisper-rs/cuda"]
+vulkan = ["whisper", "whisper-rs/vulkan"]
+# sherpa-onnx engine (streaming Zipformer) + diarization (pyannote-seg + speaker embeddings).
+# Downloads prebuilt sherpa-onnx libs at build time (shared on Windows, static elsewhere).
+sherpa = ["dep:sherpa-onnx"]
 
 [dependencies]
 almond-types = { path = "../almond-types" }
+async-trait = "0.1.92"
+hex = "0.4"
+hound = "3.5"
+serde = { workspace = true }
+serde_json = { workspace = true }
+sha2 = "0.10"
+tokio = { version = "1.54.1", features = ["rt"] }
+tracing = "0.1"
+unicode-normalization = "0.1"
+ureq = { version = "3.5", optional = true, default-features = false, features = ["rustls"] }
+tar = { version = "0.4", optional = true }
+bzip2 = { version = "0.6", optional = true }
+whisper-rs = { version = "0.16.0", optional = true }
+
+# sherpa-onnx: on Windows link the shared (/MD) build so it can coexist with whisper.cpp in one
+# binary (the static Windows archive is /MT and would clash). Static elsewhere (Linux, Android).
+[target.'cfg(windows)'.dependencies]
+sherpa-onnx = { version = "2.0.1", optional = true, default-features = false, features = ["shared"] }
+
+[target.'cfg(not(windows))'.dependencies]
+sherpa-onnx = { version = "2.0.1", optional = true, default-features = false, features = ["static"] }
+
+[dev-dependencies]
+almond-types = { path = "../almond-types", features = ["mock"] }
+tokio = { version = "1.54.1", features = ["rt", "rt-multi-thread", "macros", "time"] }
+
+[[example]]
+name = "transcribe"
+required-features = ["whisper"]
+
+[[example]]
+name = "live"
+
+[[example]]
+name = "stt_eval"
