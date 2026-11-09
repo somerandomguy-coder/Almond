@@ -73,8 +73,10 @@ impl Default for StreamConfig {
             step_ms: 1000,
             min_decode_ms: 1000,
             max_buffer_ms: 20_000,
-            max_segment_ms: 15_000,
-            pause_ms: 800,
+            // Keep segments short so finals land quickly (measured: 15 s / 800 ms gave a p50 final
+            // latency of 7.9 s on conversational audio with Zipformer).
+            max_segment_ms: 8_000,
+            pause_ms: 500,
             vad_threshold: 0.002,
             prompt: None,
         }

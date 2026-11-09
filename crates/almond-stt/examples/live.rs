@@ -71,9 +71,19 @@ async fn main() {
     let mut finals = vec![];
     let mut latencies_ms: Vec<f64> = vec![];
     let mut n_partials = 0usize;
+    // First-shown latency: when a word position of a segment is displayed for the first time
+    // (partial or final), how long after its audio ended.
+    let mut shown: std::collections::HashMap<u32, usize> = Default::default();
+    let mut first_ms: Vec<f64> = vec![];
     let fs = frames(&x, 100, AudioChannel::Mic);
     let mut handle = |ups: Vec<almond_types::stt::SttUpdate>, now_ms: f64| {
         for u in ups {
+            let words = u.segment.words.as_deref().unwrap_or(&[]);
+            let seen = shown.entry(u.segment.idx).or_default();
+            for w in words.iter().skip(*seen) {
+                first_ms.push(now_ms - w.t1_ms as f64);
+            }
+            *seen = (*seen).max(words.len());
             if u.is_final {
                 for w in u.segment.words.iter().flatten() {
                     latencies_ms.push(now_ms - w.t1_ms as f64);
@@ -126,18 +136,21 @@ async fn main() {
     handle(ups, now);
     let wall = start.elapsed().as_secs_f64();
     latencies_ms.sort_by(|a, b| a.total_cmp(b));
-    let pct = |p: f64| {
-        latencies_ms
-            .get(((latencies_ms.len() as f64 - 1.0) * p) as usize)
+    first_ms.sort_by(|a, b| a.total_cmp(b));
+    let pct_of = |v: &Vec<f64>, p: f64| {
+        v.get(((v.len() as f64 - 1.0) * p) as usize)
             .copied()
             .unwrap_or(f64::NAN)
     };
+    let pct = |p: f64| pct_of(&latencies_ms, p);
     println!(
         "{}",
         serde_json::json!({
             "model": model, "audio_s": x.len() as f64 / 16000.0, "wall_s": wall,
             "finals": finals.len(), "partials": n_partials,
             "final_latency_ms_p50": pct(0.5), "final_latency_ms_p90": pct(0.9),
+            "first_shown_latency_ms_p50": pct_of(&first_ms, 0.5),
+            "first_shown_latency_ms_p90": pct_of(&first_ms, 0.9),
             "text": finals.join(" "),
         })
     );
