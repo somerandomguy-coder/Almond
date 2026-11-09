@@ -3,7 +3,7 @@
 //!
 //! ```text
 //! cargo run -p almond-pipeline --example demo_meeting -- [model] [lang]
-//! cargo run -p almond-pipeline --example demo_meeting -- qwen3.5:9b en
+//! cargo run -p almond-pipeline --example demo_meeting -- qwen3.5:4b en
 //! ```
 //! Uses `OLLAMA_HOST` if set (default http://127.0.0.1:11434).
 
@@ -20,7 +20,10 @@ use std::sync::Arc;
 #[tokio::main]
 async fn main() -> almond_types::Result<()> {
     let args: Vec<String> = std::env::args().skip(1).collect();
-    let model = args.first().cloned().unwrap_or_else(|| "qwen3.5:9b".into());
+    let model = args
+        .first()
+        .cloned()
+        .unwrap_or_else(almond_llm::tasks::default_model);
     let lang = args.get(1).cloned().unwrap_or_else(|| "auto".into());
 
     let ollama = Arc::new(Ollama::from_env()?);

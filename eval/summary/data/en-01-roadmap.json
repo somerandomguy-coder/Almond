@@ -1,0 +1,36 @@
+{
+  "id": "en-01-roadmap",
+  "lang": "en",
+  "title": "Q1 roadmap prioritization",
+  "date": "2026-11-11",
+  "segments": [
+    ["Sarah", "Thanks for joining. The goal today is to lock the Q1 roadmap; we have capacity for roughly three big projects."],
+    ["Sarah", "The candidates are offline mode, the Salesforce integration, a redesign of the reporting dashboard, and SSO for enterprise."],
+    ["David", "Enterprise SSO is blocking two deals worth about 180 thousand dollars in annual revenue, so I'd put it first."],
+    ["Priya", "Agreed on SSO. Engineering estimates it at four weeks with SAML and OIDC support."],
+    ["Mark", "Offline mode is our most requested feature, 340 votes on the feedback board, but it's at least eight weeks of work."],
+    ["Priya", "Offline mode also needs a sync engine rewrite, which is risky. I'd rather start with a two-week spike to de-risk it."],
+    ["Sarah", "Okay, decision: SSO is priority one, and offline mode gets a two-week technical spike in January, full build only if the spike looks good."],
+    ["David", "What about Salesforce? Sales keeps asking for it."],
+    ["Mark", "Only eleven customers asked for Salesforce, and Zapier covers most of the use case today."],
+    ["Sarah", "Then Salesforce moves to Q2. The dashboard redesign takes the third slot since churn interviews keep mentioning reporting."],
+    ["Priya", "For the dashboard we need a designer; Emma is fully booked until mid-January."],
+    ["Sarah", "I'll ask the design lead whether we can borrow a contractor. Mark, please write the dashboard requirements doc by next Friday."],
+    ["David", "Can I tell the two enterprise prospects that SSO ships in Q1?"],
+    ["Sarah", "Say end of February, not earlier. Priya, please confirm the SSO timeline with the team by Wednesday."]
+  ],
+  "key_points": [
+    {"point": "Capacity for about three big projects in Q1", "keywords": [["three", "3"], ["project"]], "segments": [0]},
+    {"point": "SSO is priority one: blocks two deals worth ~$180k, ~4 weeks with SAML/OIDC", "keywords": [["sso"], ["180", "four weeks", "4 weeks", "priority", "first"]], "segments": [2, 3, 6]},
+    {"point": "Offline mode: most requested (340 votes), 8+ weeks; two-week spike in January first", "keywords": [["offline"], ["spike"]], "segments": [4, 5, 6]},
+    {"point": "Salesforce integration moved to Q2 (only 11 customers, Zapier covers it)", "keywords": [["salesforce"], ["q2"]], "segments": [8, 9]},
+    {"point": "Dashboard redesign takes third slot because of churn feedback", "keywords": [["dashboard"], ["churn", "third", "reporting"]], "segments": [9]},
+    {"point": "Need a designer (Emma booked until mid-January); maybe a contractor", "keywords": [["designer", "contractor", "emma"]], "segments": [10, 11]},
+    {"point": "Tell prospects SSO ships end of February", "keywords": [["february", "feb"]], "segments": [13]}
+  ],
+  "action_items": [
+    {"text": "Sarah asks design lead about a contractor", "keywords": [["contractor", "design lead", "designer"]], "owner": "Sarah"},
+    {"text": "Mark writes dashboard requirements doc by next Friday", "keywords": [["requirements", "dashboard"]], "owner": "Mark"},
+    {"text": "Priya confirms SSO timeline by Wednesday", "keywords": [["sso", "timeline"]], "owner": "Priya"}
+  ]
+}

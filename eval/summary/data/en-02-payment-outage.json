@@ -1,0 +1,39 @@
+{
+  "id": "en-02-payment-outage",
+  "lang": "en",
+  "title": "Payment outage review",
+  "date": "2026-11-06",
+  "segments": [
+    ["Alex", "Let's review Monday's payment outage. Checkout failed for 47 minutes, from 9:12 to 9:59 in the morning."],
+    ["Alex", "We estimate around 2,300 failed orders, roughly 95 thousand dollars in delayed revenue."],
+    ["Jordan", "The trigger was an expired TLS certificate on the connection to our payment provider. It expired at 9:12 exactly."],
+    ["Jordan", "The certificate was installed manually two years ago, so it wasn't covered by our automatic renewal."],
+    ["Kim", "Our monitoring caught the error spike within three minutes, but the error message said 'connection reset', which sent us looking at the network first."],
+    ["Alex", "So most of the 47 minutes was diagnosis, not the fix itself?"],
+    ["Kim", "Right. Once we saw the certificate, replacing it took about eight minutes."],
+    ["Alex", "Action items. First, move every certificate to automated renewal and inventory all manual ones. Jordan, can you own that by end of next week?"],
+    ["Jordan", "Yes. I'll also add an alert thirty days before any certificate expires."],
+    ["Kim", "I'd like to improve the error logging so TLS handshake failures are labeled clearly instead of 'connection reset'."],
+    ["Alex", "Good, Kim takes the logging change. Also, customers whose orders failed should get an email with a ten percent discount code."],
+    ["Jordan", "Support should handle that. Do we retry the failed orders automatically?"],
+    ["Alex", "No automatic retries, some customers already re-ordered. We'll only send the email. I'll brief the support team today."],
+    ["Kim", "Should we write a public status page update?"],
+    ["Alex", "Yes, a short postmortem on the status page by Thursday. I'll draft it and Jordan reviews."]
+  ],
+  "key_points": [
+    {"point": "Checkout failed for 47 minutes (9:12-9:59)", "keywords": [["47"]], "segments": [0]},
+    {"point": "~2,300 failed orders, ~$95k delayed revenue", "keywords": [["2,300", "2300", "95"]], "segments": [1]},
+    {"point": "Root cause: expired TLS certificate installed manually, not auto-renewed", "keywords": [["certificate", "tls"], ["expired", "manual", "renewal"]], "segments": [2, 3]},
+    {"point": "Misleading 'connection reset' error slowed diagnosis; fix took ~8 minutes", "keywords": [["connection reset", "diagnos", "misleading", "eight minutes", "8 minutes"]], "segments": [4, 5, 6]},
+    {"point": "Automate certificate renewal + inventory; alert 30 days before expiry", "keywords": [["renewal", "automat", "inventory"], ["30 days", "thirty days", "alert"]], "segments": [7, 8]},
+    {"point": "Customers get email with 10% discount; no automatic retries", "keywords": [["10%", "ten percent", "discount"]], "segments": [10, 12]},
+    {"point": "Public postmortem on status page by Thursday", "keywords": [["status page"], ["thursday"]], "segments": [13, 14]}
+  ],
+  "action_items": [
+    {"text": "Jordan moves certificates to automated renewal by end of next week", "keywords": [["certificate", "renewal"]], "owner": "Jordan"},
+    {"text": "Jordan adds 30-day expiry alert", "keywords": [["alert", "30", "thirty"]], "owner": "Jordan"},
+    {"text": "Kim improves TLS error logging", "keywords": [["logging", "log", "error message"]], "owner": "Kim"},
+    {"text": "Alex briefs support team today", "keywords": [["support", "brief"]], "owner": "Alex"},
+    {"text": "Alex drafts status page postmortem by Thursday", "keywords": [["status page", "postmortem"]], "owner": "Alex"}
+  ]
+}

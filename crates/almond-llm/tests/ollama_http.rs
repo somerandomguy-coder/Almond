@@ -3,7 +3,7 @@
 //!
 //! Run the real ones with Ollama on localhost:11434 and the models pulled:
 //! `cargo test -p almond-llm --test ollama_http -- --ignored --nocapture`
-//! (override the model with `ALMOND_TEST_MODEL=gemma4:e4b`).
+//! (override the model with `ALMOND_TEST_MODEL=gemma4:12b`).
 
 use almond_llm::{Hooks, LlmTasks, Ollama, OllamaConfig, PromptLibrary, TaskConfig, TaskInput};
 use almond_llm::{TranscriptView, ollama::model_ref};
@@ -230,11 +230,11 @@ async fn num_ctx_policy() {
 // ---------------------------------------------------------------- real Ollama (ignored)
 
 fn test_model() -> String {
-    std::env::var("ALMOND_TEST_MODEL").unwrap_or_else(|_| "qwen3.5:9b".into())
+    std::env::var("ALMOND_TEST_MODEL").unwrap_or_else(|_| almond_llm::tasks::default_model())
 }
 
 #[tokio::test]
-#[ignore = "needs a running Ollama with qwen3.5:9b (or ALMOND_TEST_MODEL)"]
+#[ignore = "needs a running Ollama with the default model (or ALMOND_TEST_MODEL)"]
 async fn real_ollama_models_and_stream() {
     let o = Ollama::from_env().unwrap();
     o.health().await.unwrap();
@@ -259,7 +259,7 @@ async fn real_ollama_models_and_stream() {
 }
 
 #[tokio::test]
-#[ignore = "needs a running Ollama with qwen3.5:9b (or ALMOND_TEST_MODEL)"]
+#[ignore = "needs a running Ollama with the default model (or ALMOND_TEST_MODEL)"]
 async fn real_ollama_fixture_summary_vi_and_en() {
     let o: Arc<dyn LlmProvider> = Arc::new(Ollama::from_env().unwrap());
     let tasks = LlmTasks::new(

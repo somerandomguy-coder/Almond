@@ -1,0 +1,40 @@
+{
+  "id": "vi-05-offsite",
+  "lang": "vi",
+  "title": "Họp chuẩn bị team building Đà Lạt",
+  "date": "2026-11-10",
+  "segments": [
+    ["Ngọc", "Hello cả nhà, mình họp nhanh về chuyến team building cuối năm nhé. Địa điểm đã chốt là Đà Lạt."],
+    ["Ngọc", "Thời gian là ba ngày hai đêm, từ thứ Sáu 12/12 đến Chủ nhật 14/12."],
+    ["Thành", "Tổng cộng có 32 người đăng ký, trong đó 4 người đi kèm gia đình nên thêm 6 suất cho người nhà."],
+    ["Ngọc", "Budget công ty hỗ trợ là 4 triệu một người, người nhà thì tự túc."],
+    ["Thành", "Về di chuyển, em đề xuất đi máy bay từ Sài Gòn, vé khứ hồi hiện tại khoảng 1,8 triệu. Đi xe giường nằm thì rẻ hơn nhưng mất 7 tiếng."],
+    ["Linh", "Em nghĩ đi máy bay đi, đi xe mệt lắm, mất cả ngày đầu."],
+    ["Ngọc", "Ok, chốt đi máy bay. Thành book vé trước 20/11 để giữ giá nhé."],
+    ["Linh", "Khách sạn em đã xem ba chỗ, em thích nhất resort ở gần hồ Tuyền Lâm, giá 1,2 triệu một phòng một đêm, phòng đôi."],
+    ["Ngọc", "Resort Tuyền Lâm được. Linh đặt cọc 30% trong tuần này nhé."],
+    ["Thành", "Hoạt động chính em đề xuất ngày thứ hai đi trekking Langbiang buổi sáng, buổi tối gala dinner có trao giải nhân viên xuất sắc."],
+    ["Linh", "Gala dinner cần MC và âm thanh, em có quen một bạn MC, cát-xê khoảng 3 triệu."],
+    ["Ngọc", "Ok, Linh liên hệ MC luôn. Còn giải thưởng thì chị sẽ xin ban giám đốc duyệt 10 triệu."],
+    ["Thành", "À, có hai bạn ăn chay, nhớ báo nhà hàng chuẩn bị riêng."],
+    ["Ngọc", "Đúng rồi. Thành gửi form khảo sát size áo đồng phục và yêu cầu ăn uống cho mọi người trước thứ Sáu này nhé."]
+  ],
+  "key_points": [
+    {"point": "Team building ở Đà Lạt", "keywords": [["đà lạt"]], "segments": [0]},
+    {"point": "3 ngày 2 đêm, 12/12-14/12", "keywords": [["12/12", "14/12", "ba ngày", "3 ngày"]], "segments": [1]},
+    {"point": "32 người + 6 suất người nhà", "keywords": [["32"]], "segments": [2]},
+    {"point": "Công ty hỗ trợ 4 triệu/người", "keywords": [["4 triệu"]], "segments": [3]},
+    {"point": "Chốt đi máy bay, Thành book trước 20/11", "keywords": [["máy bay", "vé"], ["20/11"]], "segments": [4, 6]},
+    {"point": "Resort hồ Tuyền Lâm 1,2 triệu/phòng/đêm, cọc 30%", "keywords": [["tuyền lâm", "resort"], ["30%", "1,2", "1.2"]], "segments": [7, 8]},
+    {"point": "Trekking Langbiang + gala dinner trao giải", "keywords": [["langbiang", "trekking"], ["gala"]], "segments": [9]},
+    {"point": "Xin 10 triệu giải thưởng; MC 3 triệu", "keywords": [["10 triệu", "giải thưởng"]], "segments": [10, 11]},
+    {"point": "Hai bạn ăn chay; khảo sát size áo/ăn uống", "keywords": [["chay", "khảo sát", "size áo", "đồng phục"]], "segments": [12, 13]}
+  ],
+  "action_items": [
+    {"text": "Thành book vé máy bay trước 20/11", "keywords": [["vé", "máy bay"]], "owner": "Thành"},
+    {"text": "Linh đặt cọc 30% resort", "keywords": [["cọc", "resort", "khách sạn"]], "owner": "Linh"},
+    {"text": "Linh liên hệ MC", "keywords": [["mc"]], "owner": "Linh"},
+    {"text": "Ngọc xin duyệt 10 triệu giải thưởng", "keywords": [["giải thưởng", "10 triệu"]], "owner": "Ngọc"},
+    {"text": "Thành gửi form khảo sát trước thứ Sáu", "keywords": [["khảo sát", "form", "size"]], "owner": "Thành"}
+  ]
+}

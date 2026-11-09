@@ -1,0 +1,36 @@
+{
+  "id": "en-03-sales-pipeline",
+  "lang": "en",
+  "title": "Weekly sales pipeline",
+  "date": "2026-11-10",
+  "segments": [
+    ["Rachel", "Morning everyone. Quick pipeline review. We're at 1.4 million in qualified pipeline for Q4, target is 1.8."],
+    ["Tom", "Biggest update: Northwind signed yesterday, 120 thousand annual contract, three-year term."],
+    ["Rachel", "Great work Tom. What about Contoso? They were supposed to decide last week."],
+    ["Tom", "Contoso pushed to December 5th. Their legal team wants changes to the data processing agreement."],
+    ["Rachel", "Let's get our legal team on that this week. Tom, send their redlines to legal today."],
+    ["Lisa", "On my side, Fabrikam is stuck. Their champion left the company and the new VP hasn't replied in two weeks."],
+    ["Rachel", "Try going through their CFO, we met her at the conference in October. If nothing by the 20th, mark it as at risk."],
+    ["Lisa", "Will do. I also have three new inbound leads from the webinar, all mid-market, around 30 to 50 thousand each."],
+    ["Rachel", "Good. Book discovery calls with all three before Friday."],
+    ["Tom", "One concern: our discount approvals are slow. Contoso asked for fifteen percent and it took four days to get approval."],
+    ["Rachel", "Agreed. New rule: discounts up to ten percent you can approve yourselves, anything above comes to me and I answer within 24 hours."],
+    ["Lisa", "That helps a lot."],
+    ["Rachel", "Last thing, the CRM data is messy. Everyone please update close dates and stages by Wednesday so the forecast is accurate."]
+  ],
+  "key_points": [
+    {"point": "Qualified pipeline 1.4M vs 1.8M target", "keywords": [["1.4"], ["1.8"]], "segments": [0]},
+    {"point": "Northwind signed: $120k/year, three-year term", "keywords": [["northwind"], ["120"]], "segments": [1]},
+    {"point": "Contoso pushed to Dec 5 over data processing agreement; redlines to legal", "keywords": [["contoso"], ["december 5", "dec 5", "legal", "data processing"]], "segments": [3, 4]},
+    {"point": "Fabrikam stuck (champion left); go via CFO, at risk if nothing by the 20th", "keywords": [["fabrikam"], ["cfo", "at risk", "champion"]], "segments": [5, 6]},
+    {"point": "Three inbound webinar leads ($30-50k); discovery calls before Friday", "keywords": [["webinar", "inbound", "leads"], ["discovery", "three", "3"]], "segments": [7, 8]},
+    {"point": "Discounts up to 10% self-approved; above goes to Rachel, answered within 24h", "keywords": [["discount"], ["10%", "ten percent", "24"]], "segments": [9, 10]},
+    {"point": "Update CRM close dates and stages by Wednesday", "keywords": [["crm"], ["wednesday"]], "segments": [12]}
+  ],
+  "action_items": [
+    {"text": "Tom sends Contoso redlines to legal today", "keywords": [["redline", "legal", "contoso"]], "owner": "Tom"},
+    {"text": "Lisa contacts Fabrikam CFO", "keywords": [["cfo", "fabrikam"]], "owner": "Lisa"},
+    {"text": "Lisa books discovery calls before Friday", "keywords": [["discovery", "call"]], "owner": "Lisa"},
+    {"text": "Everyone updates CRM by Wednesday", "keywords": [["crm"]], "owner": null}
+  ]
+}

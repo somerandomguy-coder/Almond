@@ -8,7 +8,7 @@
 //!       │                 └── lease expires (device vanished) ──► another device reclaims
 //!       └── device lacks capabilities (phone) ──► stays pending until a capable peer syncs
 //! ```
-//! Each device advertises capabilities (`llm`, `llm:qwen3.5:9b`, `gpu`, ...) plus the implicit
+//! Each device advertises capabilities (`llm`, `llm:qwen3.5:4b`, `gpu`, ...) plus the implicit
 //! `device:<id>`, so a job can be pinned to one device (`RerunParams::allow_offload = false`).
 //!
 //! Re-running a processor produces artifacts that `supersede` the previous live artifact of the

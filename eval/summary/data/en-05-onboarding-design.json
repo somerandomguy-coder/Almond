@@ -1,0 +1,38 @@
+{
+  "id": "en-05-onboarding-design",
+  "lang": "en",
+  "title": "Mobile onboarding design review",
+  "date": "2026-11-13",
+  "segments": [
+    ["Nam", "Hi all, this is the design review for the new mobile onboarding. Linh, can you walk us through it?"],
+    ["Linh", "Sure. We cut onboarding from seven screens to four. Users now pick a language first, Vietnamese or English, then sign in."],
+    ["Linh", "In the last usability test with eight users, completion went from 62 percent to 85 percent."],
+    ["Ben", "Nice. But the permission screen still asks for contacts, notifications and location all at once. That feels aggressive."],
+    ["Linh", "Fair. We could ask for notifications only during onboarding and request location later, when the user opens the map."],
+    ["Nam", "Let's do that. Contacts permission should be removed entirely for now, we don't use it yet."],
+    ["Ben", "The Vietnamese copy on screen two is too long, 'Chào mừng bạn đến với ứng dụng quản lý cuộc họp thông minh' gets cut off on small phones."],
+    ["Linh", "Ừ đúng rồi, I'll shorten it to 'Chào mừng bạn' and move the rest to a subtitle."],
+    ["Nam", "Also, dark mode isn't in the mockups yet. Marketing wants the launch on December 10th."],
+    ["Linh", "Dark mode for these four screens is about two days of work. I'll have it ready by next Tuesday."],
+    ["Ben", "Engineering needs final assets by November 25th to make the December 10th release."],
+    ["Nam", "Okay. Linh delivers final assets by the 25th, Ben starts implementing the language picker now since that design is final."],
+    ["Ben", "One more thing: we should track drop-off per screen with analytics events."],
+    ["Nam", "Agreed, Ben adds analytics events for each onboarding step."]
+  ],
+  "key_points": [
+    {"point": "Onboarding cut from seven to four screens; language picker first", "keywords": [["four", "4"], ["screen"]], "segments": [1]},
+    {"point": "Usability test (8 users): completion 62% -> 85%", "keywords": [["85"]], "segments": [2]},
+    {"point": "Ask only for notifications in onboarding, location later, remove contacts", "keywords": [["permission", "notification", "location"], ["contact", "later"]], "segments": [3, 4, 5]},
+    {"point": "Vietnamese copy on screen two too long; shorten to 'Chào mừng bạn' + subtitle", "keywords": [["vietnamese", "copy", "chào mừng", "text"], ["shorten", "too long", "cut off", "subtitle"]], "segments": [6, 7]},
+    {"point": "Dark mode missing; ~2 days, ready next Tuesday", "keywords": [["dark mode"]], "segments": [8, 9]},
+    {"point": "Launch December 10; final assets due November 25", "keywords": [["december 10", "dec 10", "10 december"], ["november 25", "nov 25", "25th", "25 november"]], "segments": [8, 10, 11]},
+    {"point": "Track drop-off per screen with analytics events", "keywords": [["analytics", "drop-off", "drop off"]], "segments": [12, 13]}
+  ],
+  "action_items": [
+    {"text": "Linh shortens Vietnamese copy", "keywords": [["copy", "chào mừng", "shorten", "text"]], "owner": "Linh"},
+    {"text": "Linh delivers dark mode by next Tuesday", "keywords": [["dark mode"]], "owner": "Linh"},
+    {"text": "Linh delivers final assets by Nov 25", "keywords": [["assets"]], "owner": "Linh"},
+    {"text": "Ben implements language picker", "keywords": [["language picker", "language"]], "owner": "Ben"},
+    {"text": "Ben adds analytics events per step", "keywords": [["analytics"]], "owner": "Ben"}
+  ]
+}

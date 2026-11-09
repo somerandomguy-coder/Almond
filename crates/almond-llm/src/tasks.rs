@@ -27,7 +27,7 @@ use std::time::Instant;
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct TaskConfig {
-    /// Provider model name, e.g. `qwen3.5:9b`.
+    /// Provider model name, e.g. `qwen3.5:4b` (default: [`default_model`]).
     pub model: String,
     pub temperature: Option<f32>,
     /// `Some(false)` disables reasoning traces (faster, and JSON stays clean).
@@ -38,22 +38,38 @@ pub struct TaskConfig {
     pub chunk_tokens: usize,
     /// Transcript prefix used for titles.
     pub title_tokens: usize,
-    /// Language of the prompt template; None = same as the output language.
+    /// Language of the prompt *instructions*; None = same as the output language. Default
+    /// `en`: English instructions + "write in Vietnamese" scored better for small models on
+    /// VI output (eval/summary/RESULTS.md) and are equal for gemma4:12b. The vi templates
+    /// stay available (`template_lang: None` or `"vi"`).
     pub template_lang: Option<LangTag>,
     /// Extra attempts when the model returns unparsable JSON.
     pub json_retries: u32,
 }
 
+/// Built-in default summarizer model (PC class, 16 GB VRAM); override per device with
+/// `ALMOND_LLM_MODEL`, `TaskConfig::model`, or the `model` job param (weak laptop:
+/// `qwen3.5:4b`). See eval/summary/RESULTS.md.
+pub const DEFAULT_MODEL: &str = "gemma4:12b";
+
+/// `ALMOND_LLM_MODEL` if set, else [`DEFAULT_MODEL`].
+pub fn default_model() -> String {
+    std::env::var("ALMOND_LLM_MODEL")
+        .ok()
+        .filter(|m| !m.trim().is_empty())
+        .unwrap_or_else(|| DEFAULT_MODEL.to_string())
+}
+
 impl Default for TaskConfig {
     fn default() -> Self {
         TaskConfig {
-            model: "qwen3.5:9b".into(),
+            model: default_model(),
             temperature: Some(0.2),
             think: Some(false),
             num_ctx: None,
             chunk_tokens: 6_000,
             title_tokens: 1_500,
-            template_lang: None,
+            template_lang: Some(LangTag::en()),
             json_retries: 1,
         }
     }
@@ -771,7 +787,10 @@ mod tests {
                 json_reply: reply,
             }),
             PromptLibrary::builtin(),
-            TaskConfig::default(),
+            TaskConfig {
+                template_lang: None, // exercise the vi templates
+                ..Default::default()
+            },
         )
     }
 
