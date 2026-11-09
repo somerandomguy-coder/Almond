@@ -41,9 +41,9 @@ time / audio duration (lower is faster), batch size 1, sequential utterances, af
 
 | Model | Runtime | WER % | CER % | RTF |
 |---|---|---:|---:|---:|
-| sherpa `zipformer-vi-30m-int8` (26 MB) | sherpa-onnx CPU, 4 threads | **4.53** | **2.52** | **0.027** |
+| sherpa `zipformer-vi-30m-int8` (26 MB) | sherpa-onnx CPU, 4 threads | **4.52** | **2.50** | **0.020–0.027** |
 | PhoWhisper-medium (769 M) | HF transformers fp16, CUDA, beam 5 | 4.86 | 2.65 | 0.90 ¹ |
-| sherpa `zipformer-vi-int8` (2025-04-20, 60 MB) | sherpa-onnx CPU, 4 threads | 6.27 | 3.82 | 0.034 |
+| sherpa `zipformer-vi-int8` (2025-04-20, 60 MB) | sherpa-onnx CPU, 4 threads | 6.27 | 3.82 | 0.027 |
 | PhoWhisper-small (244 M) | HF transformers fp16, CUDA, beam 5 | 6.27 | 3.27 | 0.25 ¹ |
 | whisper-large-v3-turbo (809 M) | HF transformers fp16, CUDA, beam 5 | 20.66 | 16.22 | 0.17 ¹ |
 
@@ -51,9 +51,9 @@ time / audio duration (lower is faster), batch size 1, sequential utterances, af
 
 | Model | Runtime | WER % | CER % | WER % (40 utt with digits) | WER % (160 utt without digits) | RTF |
 |---|---|---:|---:|---:|---:|---:|
-| sherpa `zipformer-vi-30m-int8` | CPU, 4 thr | **8.06** | 6.12 | 22.7 | **4.3** | 0.023 |
+| sherpa `zipformer-vi-30m-int8` | CPU, 4 thr | **8.09** | 6.14 | 22.7 | **4.3** | 0.019 |
 | whisper-large-v3-turbo | HF fp16 CUDA, beam 5 | 8.30 | **5.45** | **11.1** | 7.6 | 0.11 ¹ |
-| sherpa `zipformer-vi-int8` | CPU, 4 thr | 9.29 | 7.89 | 23.4 | 5.7 | 0.029 |
+| sherpa `zipformer-vi-int8` | CPU, 4 thr | 9.29 | 7.89 | 23.4 | 5.7 | 0.023 |
 | PhoWhisper-medium | HF fp16 CUDA, beam 5 | 9.89 | 7.64 | 23.2 | 6.4 | 0.32 ¹ |
 | PhoWhisper-small | HF fp16 CUDA, beam 5 | 11.39 | 8.26 | 25.5 | 7.6 | 0.23 ¹ |
 
@@ -66,7 +66,6 @@ recognition, is most of their gap. A number normalizer for Vietnamese is an open
 | Model | Runtime | WER % | CER % | RTF |
 |---|---|---:|---:|---:|
 | whisper-large-v3-turbo | HF fp16 CUDA, beam 5 | 5.44 | 2.45 | 0.065 ¹ |
-| whisper `large-v3-turbo-q5_0` | **whisper.cpp (this crate)**, CPU, WSL, 12 thr | see CPU table | | |
 
 ¹ **GPU RTFs are pessimistic and only comparable to each other**: (a) they are from Hugging Face
 `generate()` at batch 1 with beam 5, which is far slower than whisper.cpp/faster-whisper; (b) the
@@ -78,10 +77,18 @@ not be built on this PC yet (see "Not measured").
 ### whisper.cpp on CPU (this crate's engine) — the Fedora-laptop proxy
 
 Run in WSL2 Ubuntu 24.04 on the same 12-thread CPU (no GPU), `--features whisper,sherpa`.
+Accuracy of the whisper.cpp engine is covered by the meeting run below (English via
+`whisper:small`: 9.2 % WER); a clean per-utterance whisper.cpp WER table is **missing** — the WSL
+VM stopped responding (`HCS_E_CONNECTION_TIMEOUT`) before the final CPU sweep and was not
+restarted to avoid disturbing other workstreams. Speed observations:
 
-| Model | Set | n | WER % | RTF (12 threads, beam 5) |
-|---|---|---:|---:|---:|
-| _filled in below by the final run_ | | | | |
+| Model | Measurement | RTF |
+|---|---|---:|
+| `whisper:large-v3-turbo-q5_0` | 20 FLEURS-en utt (193 s), 12 threads, beam 5, language given | **3.2** (too slow for a CPU laptop) |
+| `whisper:small` + LID `whisper:small` | system channel of the meeting (≈ 22 min speech, 60 EN turns via Whisper, 200 VI turns via Zipformer, LID on all 260) | 0.76 for the whole channel |
+| `sherpa:zipformer-vi-30m-int8` + LID `whisper:small` | mic channel of the meeting (40 VI turns) | 0.09 |
+
+(The turbo WER from that run is not reported: it predates the VAD fix and dropped quiet audio.)
 
 ### Live captions (pseudo-streaming, LocalAgreement-2)
 
@@ -100,11 +107,38 @@ Run in WSL2 Ubuntu 24.04 on the same 12-thread CPU (no GPU), `--features whisper
 
 `make_meeting.py` builds a 29.7-min two-channel "online meeting" from the eval sets: left = mic
 (one VIVOS speaker = "me", 40 utterances), right = system loopback (5 other VIVOS speakers, 200
-utterances, plus 60 English FLEURS utterances), turn-taking with 0.25–2 s gaps, light noise.
-`examples/transcribe.rs --stereo-mic-system` produces a `transcript` artifact body;
+utterances, plus 60 English FLEURS utterances), turn-taking with 0.25–2 s gaps, light noise,
+each utterance level-normalized to -26 dBFS (conference AGC; raw FLEURS-en is 30 dB quieter than
+VIVOS). `examples/transcribe.rs --stereo-mic-system` produces a `transcript` artifact body;
 `score_meeting.py` scores it per reference utterance (hypothesis words assigned by time).
 
-_Results filled in below by the final run._
+Final run — the **CPU / Fedora-laptop configuration**, entirely through this crate (WSL2, CPU only):
+vi → `sherpa:zipformer-vi-30m-int8`, en → `whisper:small`, language ID `whisper:small` per
+utterance, diarization sherpa (threshold 1.0) on the system channel, mic = "me":
+
+| Metric | Result |
+|---|---|
+| WER Vietnamese (2 569 ref words) | **6.70 %** (CER 4.32 %) |
+| WER English (1 334 ref words) | **9.15 %** (CER 4.46 %) |
+| WER overall | **7.76 %** |
+| Language ID per utterance | **100 %** vi (240/240), **100 %** en (60/60) |
+| Mic utterances labelled "me" | **100 %** (40/40) |
+| Remote VI utterances with the right speaker (transcript segments) | **91.5 %** (200), 7 labels for 5 speakers |
+| Output | 276 segments, 17 speaker ids (5 VI + "me" + 11 for the many FLEURS voices) |
+| Time (CPU, 12 threads, partly shared with other jobs) | mic 160 s, system 1 680 s, diarize 411 s → **RTF 1.26** |
+
+On CPU the cost is dominated by Whisper on the English turns and per-utterance language ID on
+every system-channel turn (≈ 260 encoder passes). On the GPU PC both are cheap; on the laptop
+prefer offloading the post-meeting pass to the PC (ARCHITECTURE §5 jobs) and keep Zipformer for
+live captions.
+
+What went wrong on the way (all fixed and covered by tests/notes):
+- 22/60 English turns were lost when a quiet English turn and a neighbouring Vietnamese turn
+  merged into one VAD region, were identified as Vietnamese and sent to Zipformer → the router now
+  splits at 200 ms gaps and the VAD threshold never drops below 1.5× the noise floor.
+- whisper.cpp skipped later utterances inside packed 28 s windows (early end-of-text) → offline
+  Whisper decodes per utterance (`WhisperConfig::pack_utterances = false`).
+- An absolute VAD floor dropped very quiet recordings entirely (FLEURS at -54 dBFS).
 
 ### Diarization (system channel only; mic = "me" by channel prior)
 
@@ -117,7 +151,8 @@ sherpa-onnx pyannote-segmentation-3.0 + 3D-Speaker ERes2Net-base, fast clusterin
 | 0.8 | 29 | 2–4 | 99.5 % | 0.16 (10 thr) |
 | **1.0 (our default)** | 15 | **1–2** | **99.5 %** | 0.15 (10 thr) |
 
-(The 60 English utterances come from many different FLEURS voices, so >5 speakers is expected.)
+(Sweep on the first version of the meeting, before level normalization. The 60 English utterances
+come from many different FLEURS voices, so >5 speakers is expected.)
 Channel prior: mic utterances labelled "me": **100 %**; mic echo of system audio (speakers instead
 of headphones) is removed by time-overlap + text-similarity (`transcript::drop_echo`, unit-tested;
 not exercised by this synthetic set, which has no echo).
@@ -139,7 +174,11 @@ not exercised by this synthetic set, which has no echo).
    public code-switching test set was found that is small and freely downloadable).
 5. **Real meetings / user recordings** — none available; `eval/stt/private/` (git-ignored) is
    where they go; `prepare_data.py`-style manifest + `stt_eval` works on them.
-6. Phone (Samsung A26) speed — not measured (no Android toolchain yet); Zipformer-30M int8 is
+6. **Per-utterance whisper.cpp CPU WER table** (PhoWhisper-small/medium, whisper-small, turbo-q5
+   via this crate) — WSL VM hung before the run; command:
+   `crates/almond-stt/scripts/wsl-cargo.sh run --release -p almond-stt --features whisper,sherpa --example stt_eval -- --model whisper:phowhisper-small --manifest <vivos manifest> --limit 50`.
+   The converted PhoWhisper-small ggml was verified to transcribe correctly through whisper.cpp.
+7. Phone (Samsung A26) speed — not measured (no Android toolchain yet); Zipformer-30M int8 is
    26 MB and runs at RTF 0.023 on 4 desktop threads, so it should be comfortably real-time.
 
 ## Reproduce
