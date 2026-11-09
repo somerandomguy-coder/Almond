@@ -1,8 +1,38 @@
-[package]
+﻿[package]
 name = "almond-audio"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 
+[features]
+default = ["opus"]
+# Opus archive encoding (libopus, built from source via cmake by audiopus_sys).
+opus = ["dep:opus", "dep:ogg"]
+# WebRTC VAD (C library compiled with `cc`).
+webrtc-vad = ["dep:webrtc-vad"]
+
 [dependencies]
 almond-types = { path = "../almond-types" }
+async-trait = "0.1"
+hound = "3"
+libloading = "0.9"
+rubato = "5"
+serde = { workspace = true }
+serde_json = { workspace = true }
+tokio = { version = "1", features = ["sync", "time", "rt", "macros"] }
+tracing = "0.1"
+ogg = { version = "0.9", optional = true }
+opus = { version = "0.4", optional = true }
+webrtc-vad = { version = "0.4", optional = true }
+
+[target.'cfg(not(target_os = "android"))'.dependencies]
+cpal = "0.18"
+
+# Linux: cpal's PulseAudio host is a pure-Rust protocol client (no libpulse / bindgen) and talks
+# to pipewire-pulse on Fedora, which exposes the default sink's `.monitor` source.
+[target.'cfg(target_os = "linux")'.dependencies]
+cpal = { version = "0.18", features = ["pulseaudio"] }
+
+[dev-dependencies]
+almond-types = { path = "../almond-types", features = ["mock"] }
+tokio = { version = "1", features = ["sync", "time", "rt-multi-thread", "macros"] }
