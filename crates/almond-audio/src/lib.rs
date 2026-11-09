@@ -19,6 +19,7 @@
 
 pub use almond_types as types;
 
+pub mod capture;
 pub mod clock;
 #[cfg(not(target_os = "android"))]
 pub mod cpal_backend;
@@ -26,13 +27,16 @@ pub mod file;
 pub mod level;
 pub mod pipeline;
 pub mod push;
+pub mod recorder;
 pub mod resample;
 pub mod vad;
 
+pub use capture::{CaptureSession, CaptureSummary};
 pub use clock::CaptureClock;
 #[cfg(not(target_os = "android"))]
 pub use cpal_backend::CpalBackend;
 pub use file::open_wav;
 pub use pipeline::{AlignConfig, PipelineStream, RawSender, StatsSnapshot, StreamStats};
 pub use push::PushAudioSource;
+pub use recorder::{Codec, RecorderConfig, SessionRecorder, recover_session, unfinished_sessions};
 pub use resample::StreamResampler;
