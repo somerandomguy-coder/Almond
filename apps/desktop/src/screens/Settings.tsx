@@ -235,6 +235,7 @@ function Models() {
                 <Row key={idAttr} htmlFor={idAttr} label={`${t(`settings.task.${task}`)} · ${lang ? t(`settings.lang.${lang}`) : t("settings.allLanguages")}`}>
                   <select id={idAttr} className={cx(selectCls, "max-w-[16rem]")} value={cur} onChange={(e) => select(task, lang, e.target.value)}>
                     {!cur && <option value="">—</option>}
+                    {cur && !options.some((m) => m.id === cur) && <option value={cur}>{cur}</option>}
                     {options.map((m) => (
                       <option key={m.id} value={m.id}>
                         {m.id}
