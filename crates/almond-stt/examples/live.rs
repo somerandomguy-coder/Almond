@@ -38,6 +38,7 @@ async fn main() {
             _ => wav = a,
         }
     }
+    let _ = cpu; // only read by the whisper arm
     let mgr = ModelManager::open_default().unwrap();
     let engine: Arc<dyn SttEngine> = match mgr.entry(&model).unwrap().engine.as_str() {
         #[cfg(feature = "whisper")]
