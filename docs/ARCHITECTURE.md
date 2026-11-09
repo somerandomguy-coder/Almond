@@ -61,8 +61,8 @@ crates/
   almond-sync/       # device identity, pairing, discovery, transport, log replication, blob transfer
   almond-core/       # facade wiring everything; exposes Rust API + local JSON-RPC/WebSocket API
 apps/
-  desktop/           # Tauri 2 app (Windows, Linux, Android targets), UI in apps/desktop/ui
-  almondd/           # headless daemon binary
+  desktop/           # Tauri 2 app (Windows, Linux, Android targets): UI in src/, Rust shell in src-tauri/
+  (almondd)          # optional headless daemon — deferred, sync is on demand
 plugins/
   tauri-plugin-almond-android/   # Kotlin: foreground recording service, CalendarContract, NSD, notifications
 eval/                # STT WER + summary quality harness, small vi/en datasets (no private audio in git)
@@ -187,6 +187,9 @@ UI surfaces verdicts as underline colors on summary bullets with hover → evide
   Unpaired peers are rejected at the transport level.
 - **Discovery:** iroh local discovery (mDNS) + Android NSD fallback + manual `ip:port`. LAN-only by
   default (relays off); off-LAN via relay is a later toggle.
+- **On demand, no daemon:** devices are laptops/phones that come and go. Discovery + sync run only
+  while the app is open; the user presses **Sync** (optionally "auto-sync while open" toggle).
+  Pending offload jobs are simply picked up the next time the PC syncs.
 - **Replication:** each event = `{ device, seq, hlc, type, payload }`. Per-device monotonically
   increasing `seq` → version vector. Sync = exchange vectors, stream missing events, ack. Idempotent,
   resumable, works with any number of peers (no leader).
@@ -208,6 +211,14 @@ UI surfaces verdicts as underline colors on summary bullets with hover → evide
 - **Gmail (optional, per account):** fetch recent threads with the event's attendees as summary
   context; create a follow-up **draft** (never auto-send).
 
+## 8b. Actions (post-meeting, user-confirmed side effects)
+
+`Action` trait in `almond-types`: `descriptor()` (id, title, required capabilities/accounts),
+`propose(meeting, artifacts) -> Vec<ActionProposal>`, `execute(proposal) -> ActionResult`.
+Proposals are artifacts (`kind = "action_proposals"`) so they sync and show in the UI; execution
+always requires a user click and records an `action_result` artifact. Planned actions: Gmail
+follow-up draft, create calendar follow-up event, export Markdown, copy to clipboard.
+
 ## 9. Local API (for UI, CLI, plugins, future agents)
 
 `almond-core` exposes one API surface, transported three ways: Tauri commands (UI), JSON-RPC over
@@ -221,7 +232,8 @@ artifacts.list{meeting, kind?} / get / rerun{processor, inputs}
 notes.get / notes.applyUpdate (Loro)
 search.query{text, lang?}
 calendar.accounts.add{google|ics|phone} / remove / events.upcoming
-mail.context{event} / mail.draftFollowUp{meeting}
+mail.context{event}
+actions.list / actions.propose{meeting} / actions.execute{proposal}
 pipeline.processors.list / register{external} / jobs.list
 verify.run{artifact, verifiers?} / verify.verifiers.list
 sync.devices.list / pair.begin / pair.accept / unpair / status

@@ -1,0 +1,23 @@
+/target
+**/node_modules
+**/dist
+*.log
+.DS_Store
+.idea/
+# models, recordings, local data — never commit
+/models/
+/data/
+*.gguf
+*.ggml
+*.onnx
+*.bin
+*.wav
+*.opus
+*.flac
+*.mp3
+*.m4a
+eval/**/private/
+# secrets
+.env
+*.pem
+client_secret*.json

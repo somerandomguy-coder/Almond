@@ -26,16 +26,16 @@ Every workstream codes against the **traits + mocks** from Phase 0, so none bloc
 
 **Owner:** main session. **Branch:** `main`.
 
-- [ ] Cargo workspace with all crates from ARCHITECTURE §3 as compiling stubs; pnpm workspace for UI.
-- [ ] `almond-types`: `Id`, `DeviceId`, `Hlc`, `LangTag`, `Meeting`, `Artifact`, `Provenance`,
-      `SpanRef`, artifact body structs + JSON Schemas (via `schemars`), `Event` envelope.
-- [ ] Traits: `AudioSource`, `SttEngine`, `Diarizer`, `LlmProvider`, `Processor`, `Verifier`,
+- [x] Cargo workspace with all crates from ARCHITECTURE §3 as compiling stubs; pnpm workspace for UI.
+- [x] `almond-types`: `Id`, `DeviceId`, `Hlc`, `LangTag`, `Meeting`, `Artifact`, `Provenance`,
+      `SpanRef`, artifact body structs + JSON Schemas (TS via `ts-rs`; JSON Schema deferred), `Event` envelope.
+- [x] Traits: `AudioSource`, `SttEngine`, `Diarizer`, `LlmProvider`, `Processor`, `Verifier`,
       `CalendarSource`, `MailSource`, `Transport`, `Store`, `BlobStore`, `SecretStore`.
-- [ ] In-memory **mock** impl of every trait (`almond-types::mock` behind a `mock` feature).
-- [ ] API spec: `docs/API.md` + Rust request/response types; TS types generated (`ts-rs` or `specta`)
-      into `apps/desktop/ui/src/gen/`.
-- [ ] Tauri 2 app that boots on Windows + Linux showing "hello" via one real command.
-- [ ] CI workflow, `.editorconfig`, `rustfmt.toml`, `CONTRIBUTING.md` with ownership table below.
+- [x] In-memory **mock** impl of every trait (`almond-types::mock` behind a `mock` feature).
+- [x] API spec: `docs/API.md` + Rust request/response types; TS types generated (`ts-rs`)
+      into `apps/desktop/src/gen/`.
+- [x] Tauri 2 app that boots on Windows + Linux showing "hello" via one real command.
+- [x] CI workflow, `.editorconfig`, `rustfmt.toml`, `CONTRIBUTING.md` with ownership table below.
 - **Milestone M0** → tag `m0-contracts`, push. Unblocks Phase 1.
 
 ---
@@ -47,9 +47,9 @@ Every workstream codes against the **traits + mocks** from Phase 0, so none bloc
 | A | Audio capture | `crates/almond-audio` | M0 |
 | B | STT + diarization + eval | `crates/almond-stt`, `eval/stt` | M0 (uses WAV files, not A) |
 | C | LLM + pipeline + prompts | `crates/almond-llm`, `crates/almond-pipeline`, `eval/summary` | M0 |
-| D | Store + sync | `crates/almond-store`, `crates/almond-sync`, `apps/almondd` | M0 |
+| D | Store + sync | `crates/almond-store`, `crates/almond-sync` | M0 |
 | E | Calendar + mail | `crates/almond-calendar`, `crates/almond-mail` | M0 |
-| F | Desktop UI | `apps/desktop/ui` | M0 (mock API) |
+| F | Desktop UI | `apps/desktop/src` | M0 (mock API) |
 | G | Android | `plugins/tauri-plugin-almond-android`, `apps/desktop/src-tauri/gen/android` | M0 |
 | H | Verification | `crates/almond-verify` | M0 (uses fixture artifacts) |
 
@@ -84,7 +84,7 @@ Goal: produce synchronized 16 kHz mono PCM frames per channel (`mic`, `system`) 
 - D2 HLC, version vectors, event apply (idempotent), Loro doc storage.
 - D3 `almond-sync`: device identity (keychain), pairing (QR payload + 6-word code), iroh transport (pinned version) behind `Transport` trait, LAN-only mode, discovery (mDNS + manual address + hook for Android NSD).
 - D4 Replication protocol, lazy blob fetch with per-device policy, backpressure, resume.
-- D5 `apps/almondd`: headless daemon (systemd unit) using store + sync (+ pipeline later).
+- D5 On-demand sync session API: `sync_now(peers?)` → progress events → summary; "auto-sync while open" toggle. (No daemon.)
 - Done when: 3 processes (Win, Linux, and a third on either) pair, converge after offline edits, and an integration test with random partitions passes.
 
 ### WS-E Calendar + mail
@@ -92,7 +92,7 @@ Goal: produce synchronized 16 kHz mono PCM frames per channel (`mic`, `system`) 
 - E2 `GoogleCalendar` source: calendar list, `events.list` + `syncToken`, poll, normalize (video link detection: Meet/Zoom/Teams), emit events into the log.
 - E3 `IcsSubscription` source; `PhoneCalendar` source *interface* (data provided by WS-G plugin).
 - E4 Reminder scheduler (configurable lead time; dedupe across devices so only the active device notifies).
-- E5 Gmail: attendee thread context (readonly), follow-up draft creation; strictly optional per account.
+- E5 Gmail: attendee thread context (readonly), strictly optional per account. (Follow-up *draft* = a later `Action`, not Phase 1.)
 - Done when: two Google accounts + an ICS feed show merged upcoming events with reminders.
 
 ### WS-F Desktop UI (React + TS + Vite + Tailwind + TipTap/Loro)
@@ -153,10 +153,15 @@ Suggested waves if you don't want 8 at once:
 - **Wave 2:** A, E, H
 - **Wave 3:** G (benefits from B's sherpa-onnx work and D's sync)
 
-## Open questions for you
+## Decisions from Q&A (2026-11-09)
 
-1. PC GPU model / VRAM, and Linux box specs? (Decides default STT + LLM sizes and who claims jobs.)
-2. Is the Linux box always on? (Then it's the natural `almondd` sync/compute hub.)
-3. Typical meeting: online (Meet/Zoom/Teams on PC) or in-person (phone on the table)?
-4. Android version / phone model? (Playback capture and background limits vary.)
-5. Do you want Gmail *drafts*, or only reading context? (Drafts need a broader restricted scope.)
+| Question | Answer | Consequence |
+|---|---|---|
+| Hardware | PC: RTX 5060 Ti 16 GB (Windows). Linux: Fedora laptop, weak. | PC is the compute node: PhoWhisper-large on GPU, `qwen3.5:9b` default summarizer (already pulled), larger models allowed. Fedora: `gemma4:e4b` for light summaries, mostly a viewer/sync peer. `nomic-embed-text` available for search/RAG later. |
+| Always-on node? | No — laptops come and go. | **No daemon.** Sync is **on demand**: open the app on both devices, press **Sync** (discovery only runs while the app is open). `apps/almondd` is dropped from Phase 1. Jobs offloaded to the PC run when the PC is next online and synced. |
+| Meeting type | Primarily online (Google Meet etc.) on PC; in-person is a nice-to-have. | Priority: WASAPI loopback + mic on Windows (WS-A), PipeWire on Fedora second. Phone = in-person recorder (mic), secondary. |
+| Phone | Samsung Galaxy A26 (Android 15 / One UI 7). | Foreground service + ask user to exempt from Samsung battery optimization; on-device ASR limited to small sherpa-onnx models. |
+| Gmail drafts | Nice, later. | New extension point: **Actions** (post-meeting actions like "draft follow-up email", "create calendar event", "export to Markdown"). Contract defined in Phase 0; Gmail draft action is a later item. |
+
+Toolchain on the PC: Rust 1.98, Node 24, pnpm 10, cmake, Ollama 0.20 — **no Java / Android SDK / clang yet**, so
+WS-G (Android) waits for the SDK install; everything else can run now.
