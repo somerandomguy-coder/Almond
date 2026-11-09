@@ -75,7 +75,7 @@ impl Default for StreamConfig {
             max_buffer_ms: 20_000,
             max_segment_ms: 15_000,
             pause_ms: 800,
-            vad_threshold: 0.006,
+            vad_threshold: 0.002,
             prompt: None,
         }
     }

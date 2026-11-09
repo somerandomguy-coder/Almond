@@ -136,7 +136,9 @@ impl Default for VadParams {
     fn default() -> Self {
         VadParams {
             frame_ms: 30,
-            abs_threshold: 0.006,
+            // Low on purpose: FLEURS / quiet laptop mics peak at ~0.006 frame RMS. The
+            // relative (noise-floor) term does the real work on noisy input.
+            abs_threshold: 0.0015,
             rel_factor: 2.5,
             min_silence_ms: 500,
             min_speech_ms: 250,
