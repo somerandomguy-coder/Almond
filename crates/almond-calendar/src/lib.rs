@@ -20,6 +20,7 @@ pub mod ics;
 pub mod oauth;
 pub mod phone;
 pub mod poll;
+pub mod reminder;
 mod snapshot;
 
 pub use almond_types as types;
@@ -34,6 +35,10 @@ pub use ics::IcsSubscription;
 pub use oauth::{AccessTokenProvider, GoogleAccount, GoogleAuth, GoogleOAuthConfig};
 pub use phone::{PhoneCalendar, PhoneSnapshot};
 pub use poll::PollPolicy;
+pub use reminder::{
+    ActiveDevicePolicy, AlwaysNotify, DeviceActivity, NotifyPolicy, ReminderConfig,
+    ReminderScheduler,
+};
 
 const DAY_MS: i64 = 24 * 60 * 60 * 1000;
 
