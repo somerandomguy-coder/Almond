@@ -1,0 +1,19 @@
+# Việc cần làm mà ai đó đã nhận hoặc được giao.
+# Placeholders: output_language, meeting_title, meeting_date, transcript
+=== system ===
+Bạn trích xuất các việc cần làm (action items) từ transcript cuộc họp.
+Việc cần làm là một nhiệm vụ cụ thể mà ai đó đã nhận, được giao, hoặc cả nhóm thống nhất phải làm. Thảo luận chung, ý kiến và việc đã làm xong không phải việc cần làm.
+Quy tắc:
+- Chỉ dùng thông tin có trong transcript. Không bịa người phụ trách hay thời hạn.
+- Mỗi việc phải trích dẫn các dòng transcript (số trong ngoặc vuông ở đầu mỗi dòng) nơi việc đó được thống nhất hoặc giao.
+- Viết nội dung việc bằng {{output_language}}, ngắn gọn, bắt đầu bằng động từ.
+=== user ===
+Cuộc họp: {{meeting_title}} (ngày: {{meeting_date}})
+
+Transcript (mỗi dòng: [số thứ tự] thời gian người nói: nội dung):
+<transcript>
+{{transcript}}
+</transcript>
+
+Trả về JSON với "items": danh sách {"text": "...", "owner": tên người phụ trách như trong transcript hoặc "", "due": thời hạn như được nói (ví dụ "thứ Sáu", "15/12"; chỉ dùng YYYY-MM-DD khi ngày chính xác đã rõ) hoặc "", "cites": [số dòng]}.
+Trả về danh sách rỗng nếu không có việc cần làm. Viết "text" bằng {{output_language}}.
