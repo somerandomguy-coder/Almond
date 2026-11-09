@@ -1,0 +1,154 @@
+@import "tailwindcss";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* Calm, Granola-like palette. Tokens are CSS variables so light/dark is one class switch. */
+@theme {
+  --font-sans: "Inter Variable", "Inter", "Segoe UI", "Noto Sans", system-ui, sans-serif;
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-sunken: var(--sunken);
+  --color-line: var(--line);
+  --color-ink: var(--ink);
+  --color-muted: var(--muted);
+  --color-faint: var(--faint);
+  --color-accent: var(--accent);
+  --color-accent-ink: var(--accent-ink);
+  --color-accent-soft: var(--accent-soft);
+  --color-ai: var(--ai);
+  --color-ok: var(--ok);
+  --color-ok-soft: var(--ok-soft);
+  --color-bad: var(--bad);
+  --color-bad-soft: var(--bad-soft);
+  --color-warn: var(--warn);
+  --color-warn-soft: var(--warn-soft);
+  --color-unk: var(--unk);
+  --color-unk-soft: var(--unk-soft);
+  --color-rec: var(--rec);
+}
+
+:root {
+  --bg: #fbfaf7;
+  --surface: #ffffff;
+  --sunken: #f3f1ec;
+  --line: #e7e4dc;
+  --ink: #1d1c1a;
+  --muted: #6b6860;
+  --faint: #a19d93;
+  --accent: #3f7d58;
+  --accent-ink: #ffffff;
+  --accent-soft: #e6f0e9;
+  --ai: #7a776f;
+  --ok: #2f7a4d;
+  --ok-soft: #e3f1e8;
+  --bad: #b3372e;
+  --bad-soft: #f8e4e1;
+  --warn: #a5650f;
+  --warn-soft: #f8ecd8;
+  --unk: #5d6470;
+  --unk-soft: #eceef1;
+  --rec: #d64235;
+  color-scheme: light;
+}
+
+.dark {
+  --bg: #161614;
+  --surface: #1e1e1b;
+  --sunken: #252522;
+  --line: #34332f;
+  --ink: #ecebe6;
+  --muted: #a3a097;
+  --faint: #6f6c64;
+  --accent: #7cc296;
+  --accent-ink: #10231a;
+  --accent-soft: #23362a;
+  --ai: #9d9a91;
+  --ok: #7cc296;
+  --ok-soft: #1f3327;
+  --bad: #f08a80;
+  --bad-soft: #3d2320;
+  --warn: #e3b061;
+  --warn-soft: #3a2e1b;
+  --unk: #a9b0bc;
+  --unk-soft: #2a2d33;
+  --rec: #ff6b5e;
+  color-scheme: dark;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  font-feature-settings: "cv11", "ss01";
+  /* Vietnamese stacks diacritics above and below; give lines room. */
+  line-height: 1.55;
+}
+
+/* ---- TipTap / ProseMirror notes editor ---- */
+.notes-editor .ProseMirror {
+  outline: none;
+  min-height: 16rem;
+  font-size: 1rem;
+}
+.notes-editor .ProseMirror p {
+  margin: 0.25rem 0;
+}
+.notes-editor .ProseMirror h1,
+.notes-editor .ProseMirror h2,
+.notes-editor .ProseMirror h3 {
+  font-weight: 600;
+  margin: 1rem 0 0.25rem;
+}
+.notes-editor .ProseMirror h1 {
+  font-size: 1.35rem;
+}
+.notes-editor .ProseMirror h2 {
+  font-size: 1.15rem;
+}
+.notes-editor .ProseMirror ul {
+  list-style: disc;
+  padding-left: 1.4rem;
+}
+.notes-editor .ProseMirror ol {
+  list-style: decimal;
+  padding-left: 1.4rem;
+}
+.notes-editor .ProseMirror p.is-editor-empty:first-child::before {
+  content: attr(data-placeholder);
+  color: var(--faint);
+  float: left;
+  height: 0;
+  pointer-events: none;
+}
+
+@keyframes almond-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.35;
+  }
+}
+.rec-dot {
+  animation: almond-pulse 1.4s ease-in-out infinite;
+}
+
+@keyframes almond-flash {
+  0% {
+    background: var(--accent-soft);
+  }
+  100% {
+    background: transparent;
+  }
+}
+.flash {
+  animation: almond-flash 2.2s ease-out;
+}
