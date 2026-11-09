@@ -196,28 +196,29 @@ export class MockApi implements AlmondApi {
   private startLive(meeting_id: string) {
     this.liveSegments = [];
     const started = Date.now();
-    let lineIdx = 0;
-    let phase = 0; // 0 → emit partial, 1 → emit final
-    const tickMs = 250;
-    let sinceLine = 0;
+    const LINE_MS = 2600; // one caption line per 2.6 s of "audio": partial at 1.4 s, final at 2.6 s
+    let emitted = 0; // number of (partial|final) events emitted so far: 2 per line
+    // Real-time tick stays >= 100 ms even when the mock is sped up, so tests don't re-render at 100 Hz.
     this.recTimer = setInterval(() => {
       const elapsed = (Date.now() - started) * this.speed;
       const wobble = (k: number) => Math.max(0.02, Math.min(1, 0.35 + 0.3 * Math.sin(elapsed / (300 + k * 170)) + Math.random() * 0.2));
       this.rec = { ...this.rec, elapsed_ms: elapsed, levels: [["mic", wobble(1)], ["system", wobble(2)]] };
       this.emit("recording.status", this.rec);
-      sinceLine += tickMs;
-      const line = fx.LIVE_LINES[lineIdx % fx.LIVE_LINES.length];
-      if (lineIdx >= fx.LIVE_LINES.length * 3) return;
-      if (phase === 0 && sinceLine >= 1400) {
-        this.emitSegment(meeting_id, lineIdx, line, elapsed, false);
-        phase = 1;
-      } else if (phase === 1 && sinceLine >= 2600) {
-        this.emitSegment(meeting_id, lineIdx, line, elapsed, true);
-        phase = 0;
-        sinceLine = 0;
-        lineIdx++;
+      const maxEvents = fx.LIVE_LINES.length * 3 * 2;
+      while (emitted < maxEvents) {
+        const lineIdx = Math.floor(emitted / 2);
+        const final = emitted % 2 === 1;
+        const due = lineIdx * LINE_MS + (final ? LINE_MS : 1400);
+        if (elapsed < due) break;
+        // Skip stale partials when catching up; only the final matters then.
+        if (!final && elapsed >= (lineIdx + 1) * LINE_MS) {
+          emitted++;
+          continue;
+        }
+        this.emitSegment(meeting_id, lineIdx, fx.LIVE_LINES[lineIdx % fx.LIVE_LINES.length], due, final);
+        emitted++;
       }
-    }, tickMs / this.speed);
+    }, Math.max(100, 250 / this.speed));
   }
 
   private emitSegment(meeting_id: string, idx: number, line: [string, string, string], elapsed: number, final: boolean) {

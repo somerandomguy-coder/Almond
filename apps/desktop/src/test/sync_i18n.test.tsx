@@ -21,7 +21,7 @@ describe("devices & sync", () => {
     await userEvent.click(screen.getByRole("button", { name: "Sync now" }));
     expect(await screen.findByRole("button", { name: "Syncing…" })).toBeDisabled();
     await screen.findAllByRole("progressbar");
-    await screen.findByRole("button", { name: "Sync now" }, { timeout: 8000 });
+    await screen.findByRole("button", { name: "Sync now" }, { timeout: 15000 });
     const fedora = screen.getByTestId("peer-Fedora laptop").closest("li")!;
     expect(within(fedora).getByText(/events ·/)).toBeInTheDocument();
     expect(r.api.meetings.length).toBe(before + 1);

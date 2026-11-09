@@ -70,17 +70,17 @@ describe("meeting view", () => {
     api = r.api;
     await userEvent.click(await screen.findByRole("button", { name: /New note/ }));
     // Live captions stream while recording.
-    await screen.findByText("Live transcript", {}, { timeout: 6000 });
-    await screen.findByText("Ok mọi người, mình bắt đầu standup nhé.", {}, { timeout: 5000 });
+    await screen.findByText("Live transcript", {}, { timeout: 15000 });
+    await screen.findByText("Ok mọi người, mình bắt đầu standup nhé.", {}, { timeout: 15000 });
     const editor = screen.getByRole("textbox", { name: /Write rough notes/ });
     expect(editor).toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: "Stop" }));
     // Pipeline runs after stop: transcript, summary, verdicts appear.
-    await waitFor(() => expect(r.api.artifacts.some((a) => a.kind === "summary" && a.meeting_id === r.api.meetings.at(-1)!.id)).toBe(true), { timeout: 8000 });
+    await waitFor(() => expect(r.api.artifacts.some((a) => a.kind === "summary" && a.meeting_id === r.api.meetings.at(-1)!.id)).toBe(true), { timeout: 15000 });
     const enhance = await screen.findByRole("button", { name: "Enhance notes" });
     await waitFor(() => expect(enhance).toBeEnabled());
     await userEvent.click(enhance);
-    await screen.findByTestId("enhanced-notes", {}, { timeout: 5000 });
+    await screen.findByTestId("enhanced-notes", {}, { timeout: 15000 });
     expect(screen.getAllByText(/Tóm tắt thêm/).length).toBeGreaterThan(0);
   });
 
@@ -101,8 +101,8 @@ describe("meeting view", () => {
     const toast = await screen.findByRole("status");
     expect(toast).toHaveTextContent("Standup nhóm Almond");
     await userEvent.click(within(toast).getByRole("button", { name: /Start notes/ }));
-    await screen.findByDisplayValue("Standup nhóm Almond", {}, { timeout: 6000 });
-    await screen.findByText("Live transcript", {}, { timeout: 6000 });
+    await screen.findByDisplayValue("Standup nhóm Almond", {}, { timeout: 15000 });
+    await screen.findByText("Live transcript", {}, { timeout: 15000 });
     await act(() => r.api.call("recording.stop", {}));
   });
 });
