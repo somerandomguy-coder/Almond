@@ -148,10 +148,7 @@ pub fn build(m: &FixtureMeeting) -> Built {
         .collect();
     let transcript = art(
         &meeting.id,
-        &Transcript {
-            segments,
-            speakers,
-        },
+        &Transcript { segments, speakers },
         "transcribe.fixture",
     );
     let bullets = m
@@ -349,6 +346,12 @@ pub async fn run(
         };
         let out = registry.run(&claims, &ctx, None).await;
         rep.errors.extend(out.errors.iter().cloned());
+        // Verifiers that degrade gracefully (e.g. a failed LLM judge) record the error in trace.
+        for v in &out.verdicts {
+            if let Some(e) = v.trace.as_ref().and_then(|t| t.get("error")) {
+                rep.errors.push((v.verifier.clone(), e.to_string()));
+            }
+        }
         let ids: Vec<String> = claims.iter().map(|c| c.id.clone()).collect();
         let agg = aggregate::aggregate(&claims_art.id, &ids, &out.verdicts, policy);
 
@@ -359,7 +362,11 @@ pub async fn run(
                 .map(|c| c.id.as_str())
                 .collect();
             let mut labels: BTreeMap<String, VerdictLabel> = BTreeMap::new();
-            for v in out.verdicts.iter().filter(|v| cids.contains(&v.claim_id.as_str())) {
+            for v in out
+                .verdicts
+                .iter()
+                .filter(|v| cids.contains(&v.claim_id.as_str()))
+            {
                 let e = labels.entry(v.verifier.clone()).or_insert(v.label);
                 if severity(v.label) > severity(*e) {
                     *e = v.label;
@@ -461,8 +468,16 @@ impl Report {
             row(&mut s, name, "≠ supported", p);
         }
         row(&mut s, "**aggregate**", "≠ supported", &self.strict);
-        row(&mut s, "**aggregate**", "contradicted / needs_review", &self.alarm);
-        let _ = writeln!(s, "\nRecall of the aggregate (≠ supported) by injected error:\n");
+        row(
+            &mut s,
+            "**aggregate**",
+            "contradicted / needs_review",
+            &self.alarm,
+        );
+        let _ = writeln!(
+            s,
+            "\nRecall of the aggregate (≠ supported) by injected error:\n"
+        );
         let _ = writeln!(s, "| type | caught |\n|---|---|");
         for (k, (c, t)) in &self.by_type {
             let _ = writeln!(s, "| {k} | {c}/{t} |");

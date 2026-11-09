@@ -345,6 +345,18 @@ mod tests {
             t.triples[1].o.canonical(),
             ("date".into(), "2026-11-13".into())
         );
+        assert_eq!(t.triples[1].p, "due");
+
+        // A plain past date is the fact's date, not a deadline (regression from held-out set).
+        let t = heuristic(
+            "October revenue reached 2.3 billion VND.",
+            None,
+            None,
+            &[],
+            r,
+        );
+        assert!(t.triples.iter().any(|t| t.p == "date"));
+        assert!(t.triples.iter().all(|t| t.p != "due"));
 
         let t = heuristic(
             "Ngân sách marketing Q4 là 300 triệu đồng.",

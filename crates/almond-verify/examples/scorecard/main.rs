@@ -94,6 +94,12 @@ async fn main() {
             eprintln!("ollama not reachable at {url}: {e}");
             std::process::exit(1);
         }
+        let models = l.list_models().await.unwrap_or_default();
+        if !models.iter().any(|m| m.name == model) {
+            let names: Vec<_> = models.iter().map(|m| m.name.as_str()).collect();
+            eprintln!("model {model} not pulled; available: {names:?}");
+            std::process::exit(1);
+        }
         Some(l)
     } else {
         None

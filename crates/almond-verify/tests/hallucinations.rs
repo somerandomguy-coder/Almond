@@ -83,7 +83,9 @@ async fn every_symbolic_contradiction_has_a_trace() {
         claims_artifact: b.summary.clone(),
         extra: vec![b.summary.clone()],
     };
-    let out = VerifierRegistry::symbolic(cfg()).run(&claims, &ctx, None).await;
+    let out = VerifierRegistry::symbolic(cfg())
+        .run(&claims, &ctx, None)
+        .await;
     let contradictions: Vec<_> = out
         .verdicts
         .iter()

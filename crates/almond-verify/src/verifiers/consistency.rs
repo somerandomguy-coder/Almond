@@ -105,8 +105,7 @@ fn grounded(o: &Literal, ev: &[ResolvedSpan], r: chrono::NaiveDate) -> bool {
         }),
         Literal::Person { name } | Literal::Entity { name } => ev.iter().any(|s| {
             mentions(&s.text, name)
-                || s
-                    .speaker
+                || s.speaker
                     .as_deref()
                     .is_some_and(|sp| mentions(sp, name) || names::key(sp) == names::key(name))
         }),
@@ -211,7 +210,12 @@ impl Verifier for ConsistencyVerifier {
                 .map(|t| t.3.clone())
                 .unwrap_or_default()
         };
-        let conflict_proof = |c: &String, d: &String, s: &String, pr: &String, o: &String, od: &String| {
+        let conflict_proof = |c: &String,
+                              d: &String,
+                              s: &String,
+                              pr: &String,
+                              o: &String,
+                              od: &String| {
             let ty = ty_of(c, s, pr, o);
             json!({
                 "rule": "functional_conflict",

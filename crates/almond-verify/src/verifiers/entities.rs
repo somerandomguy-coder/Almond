@@ -90,7 +90,10 @@ impl Verifier for EntitiesVerifier {
                         .map(|m| m.surface)
                         .filter(|m| {
                             key(m) != key(&n.surface)
-                                && idx.people.iter().any(|k| mentions(k, m) || key(k) == key(m))
+                                && idx
+                                    .people
+                                    .iter()
+                                    .any(|k| mentions(k, m) || key(k) == key(m))
                         })
                         .collect();
                     let status = if named.is_empty() {
@@ -104,8 +107,10 @@ impl Verifier for EntitiesVerifier {
                         AtomStatus::Uncited
                     };
                     statuses.push(status);
-                    checks.push(json!({"name": n.surface, "status": status, "as_speaker": true,
-                        "named_in_segment": named, "evidence": {"span": r.span}}));
+                    checks.push(
+                        json!({"name": n.surface, "status": status, "as_speaker": true,
+                        "named_in_segment": named, "evidence": {"span": r.span}}),
+                    );
                     continue;
                 }
                 let others: Vec<&String> = ev_people

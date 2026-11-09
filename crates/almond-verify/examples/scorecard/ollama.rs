@@ -77,7 +77,8 @@ impl LlmProvider for Ollama {
         if let Some(n) = req.num_ctx {
             options["num_ctx"] = json!(n);
         }
-        let mut body = json!({"model": req.model, "messages": messages, "stream": false, "options": options});
+        let mut body =
+            json!({"model": req.model, "messages": messages, "stream": false, "options": options});
         if let Some(s) = &req.json_schema {
             body["format"] = s.clone();
         }
