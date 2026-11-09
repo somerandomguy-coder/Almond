@@ -91,7 +91,16 @@ dependencies = [
 name = "almond-mail"
 version = "0.1.0"
 dependencies = [
+ "almond-calendar",
  "almond-types",
+ "async-trait",
+ "regex",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "tokio",
+ "url",
+ "wiremock",
 ]
 
 [[package]]

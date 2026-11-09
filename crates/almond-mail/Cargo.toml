@@ -5,4 +5,16 @@ edition.workspace = true
 license.workspace = true
 
 [dependencies]
+almond-calendar = { version = "0.1.0", path = "../almond-calendar" }
 almond-types = { path = "../almond-types" }
+async-trait = "0.1.92"
+regex = "1.13.1"
+reqwest = { version = "0.13.5", default-features = false, features = ["json", "rustls", "query"] }
+serde = { workspace = true, features = ["derive"] }
+serde_json.workspace = true
+url = "2.5.8"
+
+[dev-dependencies]
+almond-types = { path = "../almond-types", features = ["mock"] }
+tokio = { version = "1.54.1", features = ["full"] }
+wiremock = "0.6.5"
