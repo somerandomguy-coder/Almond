@@ -136,9 +136,9 @@ impl Default for VadParams {
     fn default() -> Self {
         VadParams {
             frame_ms: 30,
-            // Low on purpose: FLEURS / quiet laptop mics peak at ~0.006 frame RMS. The
-            // relative (noise-floor) term does the real work on noisy input.
-            abs_threshold: 0.0015,
+            // Very low on purpose: some FLEURS files peak at 0.002 frame RMS (-54 dBFS) and
+            // quiet laptop mics are similar. The relative (noise-floor) term does the real work.
+            abs_threshold: 0.0003,
             rel_factor: 2.5,
             min_silence_ms: 500,
             min_speech_ms: 250,
@@ -162,6 +162,11 @@ pub fn split_on_silence(x: &[f32], p: &VadParams) -> Vec<(usize, usize)> {
     let floor = sorted[sorted.len() / 10];
     let p75 = sorted[sorted.len() * 3 / 4];
     let thr = p.abs_threshold.max((floor * p.rel_factor).min(p75 * 0.5));
+    // Pure low-level noise (no dynamic range, quiet) is not speech: don't hand it to a decoder.
+    let max_e = sorted[sorted.len() - 1];
+    if max_e < 0.01 && max_e < 4.0 * floor.max(1e-6) {
+        return vec![];
+    }
     let voiced: Vec<bool> = energies.iter().map(|e| *e >= thr).collect();
 
     let min_sil = (p.min_silence_ms / p.frame_ms).max(1) as usize;
@@ -268,6 +273,24 @@ mod tests {
         let r = split_on_silence(&x, &VadParams::default());
         assert_eq!(r.len(), 2, "{r:?}");
         assert!(samples_to_ms(r[1].0) > 1500);
+    }
+
+    #[test]
+    fn quiet_speech_found_flat_noise_ignored() {
+        // -54 dBFS "speech" between digital silence (a real FLEURS file looks like this)
+        let mut x = vec![0.0; ms_to_samples(500)];
+        x.extend(tone(1500, 0.0025));
+        x.extend(vec![0.0; ms_to_samples(500)]);
+        assert_eq!(split_on_silence(&x, &VadParams::default()).len(), 1);
+        // stationary low-level noise only
+        let mut s = 12345u32;
+        let noise: Vec<f32> = (0..ms_to_samples(3000))
+            .map(|_| {
+                s = s.wrapping_mul(1_103_515_245).wrapping_add(12_345);
+                ((s >> 16) as f32 / 65_536.0 - 0.5) * 0.004
+            })
+            .collect();
+        assert!(split_on_silence(&noise, &VadParams::default()).is_empty());
     }
 
     #[test]

@@ -46,6 +46,17 @@ def main():
     refs = json.load(open(ref_path, encoding="utf8"))
     segs = hyp["segments"]
 
+    # Split segments into per-word pseudo-segments when word timings exist, so a hypothesis
+    # segment spanning several reference utterances is scored against each of them.
+    expanded = []
+    for s in segs:
+        if s.get("words"):
+            for w in s["words"]:
+                expanded.append({**s, "t0_ms": w["t0_ms"], "t1_ms": max(w["t1_ms"], w["t0_ms"] + 1), "text": w["text"]})
+        else:
+            expanded.append(s)
+    segs = expanded
+
     assigned = defaultdict(list)
     unassigned = []
     for s in segs:

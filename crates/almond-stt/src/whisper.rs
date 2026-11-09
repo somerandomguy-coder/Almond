@@ -6,7 +6,7 @@
 //! * Live [`SttEngine::start_stream`]: [`crate::streaming::PseudoStream`] (LocalAgreement-2)
 //!   around a [`WhisperChunkDecoder`].
 
-use crate::audio::{pack_windows, samples_to_ms};
+use crate::audio::{VadParams, pack_windows, samples_to_ms, split_on_silence};
 use crate::streaming::{ChunkDecoder, ChunkResult, HypWord, PseudoStream, StreamConfig};
 use almond_types::artifact::body::{Segment, Word};
 use almond_types::meeting::AudioChannel;
@@ -28,6 +28,11 @@ pub struct WhisperConfig {
     pub threads: i32,
     /// Beam size; 1 = greedy (faster, used for live captions).
     pub beam_size: i32,
+    /// Offline: pack consecutive utterances into <= 28 s windows (fewer encoder passes) instead
+    /// of decoding each VAD utterance on its own. Off by default: on the synthetic meeting,
+    /// packed windows made whisper.cpp skip 18/60 English utterances that followed another
+    /// utterance in the same window (it seeks past the rest of the window after an early EOT).
+    pub pack_utterances: bool,
     /// Live-caption tuning.
     pub stream: StreamConfig,
 }
@@ -42,6 +47,7 @@ impl Default for WhisperConfig {
             flash_attn: cfg!(any(feature = "cuda", feature = "vulkan")),
             threads,
             beam_size: 5,
+            pack_utterances: false,
             stream: StreamConfig::default(),
         }
     }
@@ -248,7 +254,11 @@ impl WhisperModel {
         opts: &SttOptions,
     ) -> Result<Vec<Segment>> {
         let mut state = self.create_state()?;
-        let windows = pack_windows(samples);
+        let windows = if self.cfg.pack_utterances {
+            pack_windows(samples)
+        } else {
+            split_on_silence(samples, &VadParams::default())
+        };
         let mut segs: Vec<Segment> = vec![];
         let mut prev: Option<(LangTag, String)> = None;
         for (a, b) in windows {
@@ -280,6 +290,17 @@ impl WhisperModel {
                 self.cfg.beam_size,
             )?;
             let base = t_offset_ms + samples_to_ms(a);
+            if std::env::var_os("ALMOND_STT_DEBUG").is_some() {
+                eprintln!(
+                    "[whisper] window {}..{} ms lang={} -> {:?}",
+                    base,
+                    base + samples_to_ms(b - a),
+                    lang.0,
+                    raw.iter()
+                        .map(|r| (r.no_speech_p, r.text.as_str()))
+                        .collect::<Vec<_>>()
+                );
+            }
             let mut window_text = String::new();
             for r in raw {
                 if r.text.trim().is_empty() || is_hallucination(&r) {

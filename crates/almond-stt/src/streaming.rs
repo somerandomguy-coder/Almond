@@ -77,7 +77,7 @@ impl Default for StreamConfig {
             // latency of 7.9 s on conversational audio with Zipformer).
             max_segment_ms: 8_000,
             pause_ms: 500,
-            vad_threshold: 0.002,
+            vad_threshold: 0.001,
             prompt: None,
         }
     }
