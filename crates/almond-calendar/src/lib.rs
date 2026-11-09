@@ -14,7 +14,10 @@
 //! [`CalendarDelta`](almond_types::calendar::CalendarDelta) into `CalendarUpsert` / `CalendarDelete`
 //! events in the log (see [`delta_to_event_bodies`]).
 
+pub mod conference;
+pub mod google;
 pub mod oauth;
+pub mod poll;
 
 pub use almond_types as types;
 
@@ -23,7 +26,9 @@ use almond_types::event::EventBody;
 use almond_types::time::{UnixMs, now_ms};
 use std::sync::Arc;
 
+pub use google::GoogleCalendar;
 pub use oauth::{AccessTokenProvider, GoogleAccount, GoogleAuth, GoogleOAuthConfig};
+pub use poll::PollPolicy;
 
 const DAY_MS: i64 = 24 * 60 * 60 * 1000;
 
@@ -56,7 +61,6 @@ impl SyncWindow {
 /// Injectable clock (tests pin "now").
 pub type Clock = Arc<dyn Fn() -> UnixMs + Send + Sync>;
 
-#[allow(dead_code)] // used by sources (E2+)
 pub(crate) fn system_clock() -> Clock {
     Arc::new(now_ms)
 }
