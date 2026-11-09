@@ -21,3 +21,6 @@ eval/**/private/
 .env
 *.pem
 client_secret*.json
+
+# agent worktrees
+.claude/worktrees/
