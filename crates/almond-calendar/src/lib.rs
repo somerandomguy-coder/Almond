@@ -16,8 +16,11 @@
 
 pub mod conference;
 pub mod google;
+pub mod ics;
 pub mod oauth;
+pub mod phone;
 pub mod poll;
+mod snapshot;
 
 pub use almond_types as types;
 
@@ -27,7 +30,9 @@ use almond_types::time::{UnixMs, now_ms};
 use std::sync::Arc;
 
 pub use google::GoogleCalendar;
+pub use ics::IcsSubscription;
 pub use oauth::{AccessTokenProvider, GoogleAccount, GoogleAuth, GoogleOAuthConfig};
+pub use phone::{PhoneCalendar, PhoneSnapshot};
 pub use poll::PollPolicy;
 
 const DAY_MS: i64 = 24 * 60 * 60 * 1000;
