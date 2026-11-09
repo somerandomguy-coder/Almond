@@ -155,13 +155,16 @@ pub fn split_on_silence(x: &[f32], p: &VadParams) -> Vec<(usize, usize)> {
     if energies.is_empty() {
         return vec![];
     }
-    // Noise floor = 10th percentile of frame energies. Capped at half the 75th percentile (a
-    // typical speech level) so audio without pauses is not classified as all-silence.
+    // Noise floor = 10th percentile of frame energies; threshold = floor * rel_factor, lowered
+    // towards half the 75th percentile (a typical speech level) for audio with few pauses, but
+    // never below 1.5 x floor (very quiet recordings: speech only ~2x above the noise).
     let mut sorted = energies.clone();
     sorted.sort_by(|a, b| a.total_cmp(b));
     let floor = sorted[sorted.len() / 10];
     let p75 = sorted[sorted.len() * 3 / 4];
-    let thr = p.abs_threshold.max((floor * p.rel_factor).min(p75 * 0.5));
+    let thr = p
+        .abs_threshold
+        .max((floor * p.rel_factor).min((p75 * 0.5).max(floor * 1.5)));
     // Pure low-level noise (no dynamic range, quiet) is not speech: don't hand it to a decoder.
     let max_e = sorted[sorted.len() - 1];
     if max_e < 0.01 && max_e < 4.0 * floor.max(1e-6) {
@@ -253,9 +256,14 @@ pub fn has_voice(x: &[f32], abs_threshold: f32) -> bool {
 mod tests {
     use super::*;
 
+    /// 220 Hz tone with a 4 Hz "syllable" envelope (speech-like energy variation).
     fn tone(ms: u64, amp: f32) -> Vec<f32> {
+        let tau = 2.0 * std::f32::consts::PI;
         (0..ms_to_samples(ms))
-            .map(|i| amp * (i as f32 * 2.0 * std::f32::consts::PI * 220.0 / SR as f32).sin())
+            .map(|i| {
+                let t = i as f32 / SR as f32;
+                amp * (0.55 + 0.45 * (tau * 4.0 * t).sin()) * (tau * 220.0 * t).sin()
+            })
             .collect()
     }
 

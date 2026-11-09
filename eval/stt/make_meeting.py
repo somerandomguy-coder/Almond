@@ -90,6 +90,11 @@ def main():
                 break
             u = queues[s].pop()
             x = read(u["audio"])
+            # Level-normalize each utterance to -26 dBFS RMS: Meet/Zoom apply AGC, so loopback
+            # audio arrives at a similar level per speaker. (Raw FLEURS-en clips peak at -54 dBFS,
+            # 30 dB below VIVOS, which no energy VAD can bridge in one channel.)
+            r = float(np.sqrt(np.mean(x ** 2))) + 1e-9
+            x = np.clip(x * (0.05 / r), -1, 1)
             ch = "mic" if s == me else "system"
             (mic if ch == "mic" else sysch).append((t, x))
             refs.append(

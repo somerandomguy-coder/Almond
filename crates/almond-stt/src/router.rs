@@ -85,8 +85,15 @@ impl SttEngine for RoutedEngine {
                 let lid = self.lid.clone();
                 let x = samples.to_vec();
                 let allowed = opts.allowed_languages.clone();
+                // Short min-silence: speaker/language changes in conversation often have gaps of
+                // only 250-500 ms; merging them made English turns get routed (and lost) as
+                // Vietnamese on the synthetic meeting. Engines re-split with their own VAD.
+                let vad = VadParams {
+                    min_silence_ms: 200,
+                    ..VadParams::default()
+                };
                 let regions = tokio::task::spawn_blocking(move || {
-                    split_on_silence(&x, &VadParams::default())
+                    split_on_silence(&x, &vad)
                         .into_iter()
                         .map(|(a, b)| Ok((a, b, lid.identify(&x[a..b], &allowed)?.0)))
                         .collect::<Result<Vec<_>>>()
@@ -209,7 +216,10 @@ mod tests {
 
     fn voice(ms: u64) -> Vec<f32> {
         (0..crate::audio::ms_to_samples(ms))
-            .map(|i| 0.2 * (i as f32 * 0.05).sin())
+            .map(|i| {
+                let t = i as f32 / 16_000.0;
+                0.2 * (0.55 + 0.45 * (25.0 * t).sin()) * (i as f32 * 0.05).sin()
+            })
             .collect()
     }
 
