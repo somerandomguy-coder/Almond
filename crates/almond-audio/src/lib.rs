@@ -23,6 +23,7 @@ pub mod capture;
 pub mod clock;
 #[cfg(not(target_os = "android"))]
 pub mod cpal_backend;
+pub mod echo;
 pub mod file;
 pub mod level;
 pub mod pipeline;

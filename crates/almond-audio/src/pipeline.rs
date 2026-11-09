@@ -217,6 +217,8 @@ pub struct PipelineStream {
     frames_emitted: u64,
     ended: bool,
     pending_err: Option<Error>,
+    /// Clock time at which `stop` was called (live streams are padded up to it).
+    stop_at: Option<f64>,
 }
 
 /// Create a connected producer/consumer pair.
@@ -250,6 +252,7 @@ pub fn channel_pair(
         frames_emitted: 0,
         ended: false,
         pending_err: None,
+        stop_at: None,
     };
     (sender, stream)
 }
@@ -321,6 +324,11 @@ impl PipelineStream {
                     samples = &samples[drop..];
                 }
             }
+        }
+        if let Some(t) = self.stop_at {
+            // Audio captured after `stop` was requested is not part of the session.
+            let room = ((t - self.pos_secs) * rate as f64).max(0.0) as usize;
+            samples = &samples[..room.min(samples.len())];
         }
         if samples.is_empty() {
             return Ok(());
@@ -400,6 +408,22 @@ impl AudioStream for PipelineStream {
                 return Some(Ok(self.take_frame(self.frame_len)));
             }
             if self.ended {
+                // A stopped live stream ends exactly at the stop instant, so all channels of a
+                // session end together even if a device was silent (loopback) at the end.
+                if let Some(t) = self.stop_at.take()
+                    && self.pending_err.is_none()
+                    && t > self.pos_secs
+                {
+                    let rate = self
+                        .resampler
+                        .as_ref()
+                        .map(|r| r.rate_in())
+                        .unwrap_or(PIPELINE_SAMPLE_RATE);
+                    if let Err(e) = self.insert_zeros(t - self.pos_secs, rate) {
+                        self.pending_err = Some(e);
+                    }
+                    continue;
+                }
                 if let Some(e) = self.pending_err.take() {
                     return Some(Err(e));
                 }
@@ -429,6 +453,9 @@ impl AudioStream for PipelineStream {
     }
 
     async fn stop(&mut self) -> Result<()> {
+        if self.cfg.live && self.stop_at.is_none() && !self.ended {
+            self.stop_at = Some(self.clock.now_secs());
+        }
         if let Some(f) = self.on_stop.take() {
             f();
         }

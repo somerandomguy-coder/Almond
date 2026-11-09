@@ -36,3 +36,4 @@ cpal = { version = "0.18", features = ["pulseaudio"] }
 [dev-dependencies]
 almond-types = { path = "../almond-types", features = ["mock"] }
 tokio = { version = "1", features = ["sync", "time", "rt-multi-thread", "macros"] }
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
