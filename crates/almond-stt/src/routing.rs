@@ -44,15 +44,23 @@ impl RoutingTable {
             live: l.into(),
         };
         let (vi, en, fallback) = match device {
+            // See eval/stt/RESULTS.md. PhoWhisper-medium: 4.9 % WER on VIVOS with punctuation and
+            // casing; PhoWhisper-large is not measured yet. Zipformer-30M (4.5 %, RTF 0.03 on
+            // CPU) drives live captions everywhere.
             DeviceClass::DesktopGpu => (
-                r("whisper:phowhisper-large", "sherpa:zipformer-vi-int8"),
+                r("whisper:phowhisper-medium", "sherpa:zipformer-vi-30m-int8"),
                 r("whisper:large-v3-turbo", "whisper:large-v3-turbo"),
                 r("whisper:large-v3-turbo", "whisper:large-v3-turbo"),
             ),
+            // Whisper large-class models run slower than real time on CPU: Vietnamese goes to
+            // Zipformer, English to whisper-small (or is offloaded to the PC).
             DeviceClass::DesktopCpu => (
-                r("sherpa:zipformer-vi-int8", "sherpa:zipformer-vi-30m-int8"),
-                r("whisper:large-v3-turbo-q5_0", "whisper:small"),
-                r("whisper:large-v3-turbo-q5_0", "whisper:small"),
+                r(
+                    "sherpa:zipformer-vi-30m-int8",
+                    "sherpa:zipformer-vi-30m-int8",
+                ),
+                r("whisper:small", "whisper:small"),
+                r("whisper:small", "whisper:small"),
             ),
             DeviceClass::Mobile => (
                 r(
@@ -118,7 +126,7 @@ mod tests {
         let t = RoutingTable::default_for(DeviceClass::DesktopGpu);
         assert_eq!(
             t.route(Some(&LangTag("vi-VN".into()))).offline,
-            "whisper:phowhisper-large"
+            "whisper:phowhisper-medium"
         );
         assert_eq!(t.route(None).offline, t.fallback.offline);
         assert_eq!(
