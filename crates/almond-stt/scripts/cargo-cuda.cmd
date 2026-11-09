@@ -22,7 +22,10 @@ where ninja >nul 2>nul || if exist "C:\Program Files\Microsoft Visual Studio\18\
 if "%CMAKE_CUDA_ARCHITECTURES%"=="" set "CMAKE_CUDA_ARCHITECTURES=120"
 rem nvcc may not yet list the newest MSVC as supported.
 set "NVCC_APPEND_FLAGS=-allow-unsupported-compiler"
-set "WHISPER_DONT_GENERATE_BINDINGS=1"
+rem whisper-rs-sys' pregenerated bindings come from Linux and are wrong on Windows, so generate
+rem them with libclang (winget install LLVM.LLVM). Fall back to the pregenerated ones without it.
+if "%LIBCLANG_PATH%"=="" if exist "C:\Program Files\LLVM\bin\libclang.dll" set "LIBCLANG_PATH=C:\Program Files\LLVM\bin"
+if "%LIBCLANG_PATH%"=="" set "WHISPER_DONT_GENERATE_BINDINGS=1"
 rem nvcc fails on paths > 260 chars ("Could not open output file ...cu.obj.d"); the ggml-cuda
 rem object paths are ~170 chars below the target dir, so use a short target dir.
 if "%CARGO_TARGET_DIR%"=="" set "CARGO_TARGET_DIR=%USERPROFILE%\.almond\t"

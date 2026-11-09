@@ -44,11 +44,15 @@ impl RoutingTable {
             live: l.into(),
         };
         let (vi, en, fallback) = match device {
-            // See eval/stt/RESULTS.md. PhoWhisper-medium: 4.9 % WER on VIVOS with punctuation and
-            // casing; PhoWhisper-large is not measured yet. Zipformer-30M (4.5 %, RTF 0.03 on
-            // CPU) drives live captions everywhere.
+            // See eval/stt/RESULTS.md. Zipformer-30M: 4.5 % WER on VIVOS, RTF 0.03 on CPU, and
+            // 6.5 % WER in the 30-min GPU meeting run. PhoWhisper through whisper.cpp emits a junk
+            // first token and unusable word timestamps (trained without timestamps), so it is not
+            // a default until that is fixed, even though it adds punctuation and casing.
             DeviceClass::DesktopGpu => (
-                r("whisper:phowhisper-medium", "sherpa:zipformer-vi-30m-int8"),
+                r(
+                    "sherpa:zipformer-vi-30m-int8",
+                    "sherpa:zipformer-vi-30m-int8",
+                ),
                 r("whisper:large-v3-turbo", "whisper:large-v3-turbo"),
                 r("whisper:large-v3-turbo", "whisper:large-v3-turbo"),
             ),
@@ -126,7 +130,7 @@ mod tests {
         let t = RoutingTable::default_for(DeviceClass::DesktopGpu);
         assert_eq!(
             t.route(Some(&LangTag("vi-VN".into()))).offline,
-            "whisper:phowhisper-medium"
+            "sherpa:zipformer-vi-30m-int8"
         );
         assert_eq!(t.route(None).offline, t.fallback.offline);
         assert_eq!(

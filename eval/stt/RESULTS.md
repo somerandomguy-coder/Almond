@@ -8,7 +8,7 @@ Datasets are downloaded at run time into `~/.almond/eval/stt/` and are **not** c
 
 | Device class | Vietnamese (offline / post-meeting) | Vietnamese (live captions) | English (offline) | English (live) | Lang-ID | Diarization |
 |---|---|---|---|---|---|---|
-| **PC, 16 GB GPU** | `whisper:phowhisper-medium` *(re-check vs `-large` once measured)* | `sherpa:zipformer-vi-30m-int8` | `whisper:large-v3-turbo` | `whisper:large-v3-turbo` (greedy) | `whisper:large-v3-turbo` | sherpa pyannote-3.0 + 3D-Speaker, threshold 1.0 |
+| **PC, 16 GB GPU** | `sherpa:zipformer-vi-30m-int8` *(PhoWhisper via whisper.cpp is broken, see GPU runs)* | `sherpa:zipformer-vi-30m-int8` | `whisper:large-v3-turbo` | `whisper:large-v3-turbo` (greedy) | `whisper:large-v3-turbo` | sherpa pyannote-3.0 + 3D-Speaker, threshold 1.0 |
 | **Fedora laptop, CPU** | `sherpa:zipformer-vi-30m-int8` | `sherpa:zipformer-vi-30m-int8` | `whisper:small` *(or offload to PC)* | `whisper:small` | `whisper:small` | same (RTF ≈ 0.15–0.25 on CPU) |
 | **Samsung A26** | `sherpa:zipformer-vi-30m-int8` | `sherpa:zipformer-vi-30m-int8` | offload to PC | — | — | offload to PC |
 
@@ -131,6 +131,25 @@ On CPU the cost is dominated by Whisper on the English turns and per-utterance l
 every system-channel turn (≈ 260 encoder passes). On the GPU PC both are cheap; on the laptop
 prefer offloading the post-meeting pass to the PC (ARCHITECTURE §5 jobs) and keep Zipformer for
 live captions.
+
+### GPU runs (Windows, whisper.cpp CUDA, added 2026-11-10 after LLVM/libclang was installed)
+
+Built with `scripts/cargo-cuda.cmd build -p almond-stt --release --features cuda,sherpa --examples`.
+Same meeting, same scorer; GPU otherwise idle.
+
+| Config | WER vi | WER en | WER all | Speaker (remote VI) | Time | RTF |
+|---|---:|---:|---:|---:|---|---:|
+| **vi Zipformer-30M (CPU), en + LID `large-v3-turbo` (GPU)** — new PC default | **6.54 %** | **8.47 %** | **7.69 %** | 92.0 % | mic+system 66 s, diarize 271 s → **5.6 min** | **0.19** |
+| vi `phowhisper-medium` (GPU), en + LID turbo (GPU) | 84.7 % ² | 8.47 % | — | 97.5 % | mic+system 162 s, diarize 263 s → 7.1 min | 0.24 |
+
+² Not a recognition failure: the Vietnamese *text* is mostly right, but PhoWhisper via whisper.cpp
+emits a junk first word per utterance ("doctoral", "hashtag", "like" …) and its word timestamps run
+past the utterance (PhoWhisper was fine-tuned without timestamp tokens), so 1 678 words land
+outside any reference utterance. Until that is fixed (suppress the first token / use segment-level
+times), the PC default for Vietnamese is Zipformer-30M.
+
+**Diarization is now ~80 % of the time.** It runs after transcription on CPU; running it concurrently
+with transcription and/or on the CUDA execution provider is the next speed-up.
 
 What went wrong on the way (all fixed and covered by tests/notes):
 - 22/60 English turns were lost when a quiet English turn and a neighbouring Vietnamese turn
