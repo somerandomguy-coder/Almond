@@ -3,6 +3,33 @@ name = "almond-sync"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+description = "Almond on-demand LAN sync: device identity, pairing, iroh transport, replication"
 
 [dependencies]
+almond-store = { path = "../almond-store" }
 almond-types = { path = "../almond-types" }
+async-trait = "0.1.92"
+blake3 = "1.8.7"
+data-encoding = "2.11.1"
+getrandom = "0.4.3"
+# iroh moves fast: pin exact versions (see docs in src/iroh_transport.rs)
+iroh = "=1.4.1"
+iroh-mdns-address-lookup = "=0.6.1"
+n0-future = "0.3.2"
+serde = { workspace = true }
+serde_json = { workspace = true }
+spake2 = "0.4.0"
+tokio = { version = "1.54.1", features = ["rt", "sync", "time", "macros"] }
+tracing = "0.1"
+
+# OS keychain where a reliable native backend exists; Linux/Android fall back to a 0600 file
+[target.'cfg(any(windows, target_os = "macos"))'.dependencies]
+keyring = { version = "=3.6.3", features = ["windows-native", "apple-native"] }
+
+[dev-dependencies]
+almond-types = { path = "../almond-types", features = ["mock"] }
+tempfile = "3.27.0"
+tokio = { version = "1.54.1", features = ["rt-multi-thread", "macros", "io-std", "io-util", "process"] }
+
+[[example]]
+name = "lan_node"
