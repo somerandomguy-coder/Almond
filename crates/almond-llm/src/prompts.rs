@@ -82,7 +82,9 @@ impl Template {
                 "prompt template {task}/{lang} has no `=== user ===` section"
             )));
         }
-        let hash = blake3::hash(src.as_bytes()).to_hex()[..12].to_string();
+        // Hash with normalized line endings so CRLF checkouts produce the same id.
+        let normalized = src.replace("\r\n", "\n");
+        let hash = blake3::hash(normalized.as_bytes()).to_hex()[..12].to_string();
         Ok(Template {
             task: task.into(),
             lang: lang.into(),
