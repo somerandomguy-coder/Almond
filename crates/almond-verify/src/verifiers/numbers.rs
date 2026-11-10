@@ -39,7 +39,7 @@ impl Verifier for NumbersVerifier {
         claims: &[Claim],
         ctx: &VerifyContext,
     ) -> almond_types::Result<Vec<Verdict>> {
-        let idx = EvidenceIndex::new(ctx, self.config.tz_offset_min);
+        let idx = EvidenceIndex::new(ctx, self.config.tz(ctx));
         let all = idx.all_segments();
         let mut out = Vec::new();
         for c in claims {

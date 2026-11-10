@@ -71,7 +71,8 @@ impl OllamaConfig {
     }
 }
 
-fn normalize_host(h: &str) -> String {
+/// `host:port` or a URL -> a URL to connect to (`0.0.0.0`, a bind address, becomes `127.0.0.1`).
+pub fn normalize_host(h: &str) -> String {
     let h = h.trim().trim_end_matches('/');
     let with_scheme = if h.starts_with("http://") || h.starts_with("https://") {
         h.to_string()

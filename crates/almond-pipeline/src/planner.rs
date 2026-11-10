@@ -12,11 +12,15 @@
 //!
 //! A processor is planned for a meeting when every kind it consumes has a **live** (not
 //! superseded) artifact, and neither a job nor an artifact for the same processor + inputs exists.
+//!
+//! Audio processors (`needs_audio`, no `consumes`, e.g. `transcribe.local`) are planned once the
+//! meeting has ended with audio tracks and has no live artifact of the kinds they produce (and no
+//! job for them yet).
 
 use crate::jobs::JobState;
 use crate::registry::ProcessorRegistry;
 use almond_types::job::{Capability, JobStatus};
-use almond_types::{Artifact, Id};
+use almond_types::{Artifact, Id, Meeting};
 use serde_json::Value;
 use std::collections::{BTreeMap, BTreeSet, HashSet};
 
@@ -28,6 +32,8 @@ pub struct PlanPolicy {
     /// Params per processor (e.g. `{"lang": "vi"}` for `summarize.llm`).
     pub params: BTreeMap<String, Value>,
     pub priority: i32,
+    /// Per-processor priority offsets on top of `priority` (e.g. summary before notes).
+    pub priorities: BTreeMap<String, i32>,
     /// Re-plan processors whose previous job failed (default: no, avoid retry storms).
     pub retry_failed: bool,
 }
@@ -57,7 +63,7 @@ pub fn latest_live<'a>(all: &'a [Artifact], kind: &str) -> Option<&'a Artifact> 
 /// Jobs to request for one meeting (in dependency order).
 pub fn plan(
     registry: &ProcessorRegistry,
-    meeting: &Id,
+    meeting: &Meeting,
     artifacts: &[Artifact],
     jobs: &BTreeMap<Id, JobState>,
     policy: &PlanPolicy,
@@ -73,8 +79,30 @@ pub fn plan(
         let Some(d) = registry.descriptor(&name) else {
             continue;
         };
-        if d.needs_audio || d.consumes.is_empty() {
-            continue; // transcription is started by the recorder, not the DAG
+        if d.consumes.is_empty() {
+            if !d.needs_audio || meeting.ended_at.is_none() || meeting.audio.is_empty() {
+                continue;
+            }
+            let produced = d
+                .produces
+                .iter()
+                .any(|k| latest_live(artifacts, k).is_some());
+            let job_exists = jobs.values().any(|s| {
+                s.job.meeting_id == meeting.id
+                    && s.job.processor == name
+                    && (!policy.retry_failed || s.status() != JobStatus::Failed)
+            });
+            if produced || job_exists {
+                continue;
+            }
+            out.push(PlannedJob {
+                processor: name.clone(),
+                inputs: vec![],
+                requires: d.requires.clone(),
+                params: policy.params.get(&name).cloned().unwrap_or(Value::Null),
+                priority: policy.priority + policy.priorities.get(&name).copied().unwrap_or(0),
+            });
+            continue;
         }
         let inputs: Option<Vec<Id>> = d
             .consumes
@@ -86,7 +114,7 @@ pub fn plan(
         };
         let want: BTreeSet<&Id> = inputs.iter().collect();
         let job_exists = jobs.values().any(|s| {
-            s.job.meeting_id == *meeting
+            s.job.meeting_id == meeting.id
                 && s.job.processor == name
                 && s.job.inputs.iter().collect::<BTreeSet<_>>() == want
                 && (!policy.retry_failed || s.status() != JobStatus::Failed)
@@ -103,7 +131,7 @@ pub fn plan(
             inputs,
             requires: d.requires.clone(),
             params: policy.params.get(&name).cloned().unwrap_or(Value::Null),
-            priority: policy.priority,
+            priority: policy.priority + policy.priorities.get(&name).copied().unwrap_or(0),
         });
     }
     out

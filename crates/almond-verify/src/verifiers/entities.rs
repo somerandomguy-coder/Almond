@@ -1,7 +1,8 @@
 //! `verify.entities`: people (owners, speakers) and other named entities in a claim must appear in
 //! the cited evidence (or as the evidence's speaker). If the evidence names a *different* person
 //! the claim is contradicted (wrong owner); a name that is nowhere in the meeting nor the attendee
-//! list is contradicted too.
+//! list is contradicted too, unless the cited evidence is in another language than the claim
+//! (translated names: "Nam Phi" / "South Africa"); then it only needs review.
 
 use super::numbers::capitalize;
 use super::{AtomStatus, VerifyConfig, label_for, verdict};
@@ -38,7 +39,7 @@ impl Verifier for EntitiesVerifier {
         claims: &[Claim],
         ctx: &VerifyContext,
     ) -> almond_types::Result<Vec<Verdict>> {
-        let idx = EvidenceIndex::new(ctx, self.config.tz_offset_min);
+        let idx = EvidenceIndex::new(ctx, self.config.tz(ctx));
         let all = idx.all_segments();
         // Known people = speakers + attendees + capitalized names said in the transcript.
         let mut known = idx.people.clone();
@@ -64,6 +65,8 @@ impl Verifier for EntitiesVerifier {
                     ev_people.push(s.clone());
                 }
             }
+            let claim_vi = looks_vietnamese(&c.text);
+            let cross_lingual = ev.iter().any(|r| looks_vietnamese(&r.text) != claim_vi);
             let mut statuses = Vec::new();
             let mut checks = Vec::new();
             let mut msgs = Vec::new();
@@ -158,6 +161,17 @@ impl Verifier for EntitiesVerifier {
                             n.surface
                         ),
                     )
+                } else if cross_lingual {
+                    // "Nam Phi" vs "South Africa": names get translated across languages, so a
+                    // missing name is only worth a review here.
+                    (
+                        AtomStatus::Absent,
+                        format!(
+                            "\"{}\" is not in the cited evidence, which is in another language \
+                             (it may be a translated name)",
+                            n.surface
+                        ),
+                    )
                 } else {
                     (
                         AtomStatus::Conflict,
@@ -203,5 +217,41 @@ impl Verifier for EntitiesVerifier {
             ));
         }
         Ok(out)
+    }
+}
+
+/// Vietnamese text (letters with Vietnamese diacritics), as opposed to English. Works on the
+/// ALL-CAPS output of the Vietnamese ASR too.
+pub(crate) fn looks_vietnamese(s: &str) -> bool {
+    use unicode_normalization::UnicodeNormalization;
+    let lower = s.to_lowercase();
+    lower.contains('đ')
+        || lower.nfd().any(|c| {
+            matches!(
+                c,
+                // tones; circumflex (â ê ô), breve (ă), horn (ơ ư)
+                '\u{0300}'
+                    | '\u{0301}'
+                    | '\u{0303}'
+                    | '\u{0309}'
+                    | '\u{0323}'
+                    | '\u{0302}'
+                    | '\u{0306}'
+                    | '\u{031B}'
+            )
+        })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::looks_vietnamese;
+
+    #[test]
+    fn vietnamese_detection() {
+        assert!(looks_vietnamese("Ngân sách marketing"));
+        assert!(looks_vietnamese("CHÍN MƯƠI BỐN"));
+        assert!(looks_vietnamese("đi"));
+        assert!(!looks_vietnamese("in South Africa at any moment"));
+        assert!(!looks_vietnamese("Taipei IT Month"));
     }
 }

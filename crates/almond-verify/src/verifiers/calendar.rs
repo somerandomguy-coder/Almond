@@ -165,8 +165,9 @@ impl Verifier for CalendarVerifier {
         let Some(ev) = &ctx.calendar_event else {
             return Ok(vec![]);
         };
-        let idx = EvidenceIndex::new(ctx, self.config.tz_offset_min);
-        let offset = match self.config.tz_offset_min {
+        let tz = self.config.tz(ctx);
+        let idx = EvidenceIndex::new(ctx, tz);
+        let offset = match tz {
             Some(m) => FixedOffset::east_opt(m * 60),
             None => chrono::Local
                 .timestamp_millis_opt(ev.start)

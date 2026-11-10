@@ -15,6 +15,7 @@ almond-types = { path = "../almond-types" }
 ascent = { version = "0.8.1", optional = true }
 async-trait = "0.1.92"
 chrono = { version = "0.4.45", default-features = false, features = ["clock", "std", "serde"] }
+chrono-tz = "0.10.4"
 serde = { workspace = true }
 serde_json = { workspace = true }
 unicode-normalization = "0.1"

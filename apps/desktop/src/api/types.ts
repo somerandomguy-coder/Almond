@@ -82,6 +82,7 @@ export interface ApiMethods {
   "models.list": [Record<string, never>, ModelEntry[]];
   "models.download": [{ id: string }, Job];
   "models.select": [ModelSlot, null];
+  "models.slots": [Record<string, never>, ModelSlot[]];
   "storage.usage": [Record<string, never>, StorageUsage];
   "settings.get": [{ key: string }, JsonValue];
   "settings.set": [{ key: string; value: JsonValue }, null];

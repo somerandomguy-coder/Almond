@@ -1,13 +1,14 @@
 //! Verifiers as pipeline `Processor`s (`claims` [+ `transcript`, `summary`, ...] -> `verdicts`).
 //!
 //! Job params understood:
-//! - `calendar_event`: a `CalendarEvent` (JSON) to check against (until the pipeline can pass one
-//!   in `VerifyContext` directly, see docs/contract-requests/ws-h.md).
+//! - `calendar_event`: the meeting's linked `CalendarEvent` (JSON); the core fills it from the
+//!   store before the job runs.
+//! - `tz` (IANA) / `tz_offset_min`: overrides the meeting's `tz` for date resolution.
 //! - `verifiers`: `["verify.numbers", ...]` to run a subset.
 
 use crate::aggregate::{self, AggregatePolicy};
 use crate::registry::VerifierRegistry;
-use almond_types::artifact::body::{Claims, Transcript, Verdicts};
+use almond_types::artifact::body::{Claims, Transcript, Verdicts, VerifierError};
 use almond_types::calendar::CalendarEvent;
 use almond_types::job::Capability;
 use almond_types::pipeline::{JobCtx, Processor, ProcessorDescriptor};
@@ -79,7 +80,7 @@ pub fn build_context(
             calendar_event,
             claims_artifact: claims_art,
             extra: rest,
-            params: serde_json::Value::Null,
+            params: ctx.params.clone(),
         },
         claims,
     ))
@@ -193,8 +194,6 @@ impl Processor for VerifyProcessor {
             .filter_map(|v| v.trace.as_ref()?.get("model")?.as_str().map(String::from))
             .next();
         (ctx.progress)(1.0, "done");
-        // Note: per-verifier failures (out.errors) have no slot in `Verdicts` yet; see
-        // docs/contract-requests/ws-h.md. Other verifiers' verdicts are still returned.
         let prov = Provenance {
             processor: self.name.clone(),
             processor_version: "1".into(),
@@ -206,7 +205,11 @@ impl Processor for VerifyProcessor {
             ctx.meeting.id.clone(),
             &Verdicts {
                 verdicts,
-                errors: vec![],
+                errors: out
+                    .errors
+                    .into_iter()
+                    .map(|(verifier, message)| VerifierError { verifier, message })
+                    .collect(),
             },
             prov,
         )?])
