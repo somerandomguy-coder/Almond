@@ -348,9 +348,19 @@ fn parse_at(toks: &[Token], i: usize, chars: &[char]) -> Option<(Quantity, usize
             // Accumulate spelled-out number.
             let (mut total, mut cur, mut last_scale) = (0.0f64, 0.0f64, 1.0f64);
             let mut after_tens = false;
+            // Two digit words in a row start a new number: ASR output without punctuation,
+            // "chín mươi bốn chín mươi lăm" = 94, 95 (not 94 + 9·10 + 5).
+            let mut last_unit = false;
             while j < toks.len() && toks[j].kind == TokKind::Word && is_number_word(&toks[j].lower)
             {
                 let w = toks[j].lower.as_str();
+                let is_unit = unit_value(w).is_some();
+                if is_unit && last_unit {
+                    break;
+                }
+                last_unit = is_unit
+                    || (inner_unit_value(w).is_some()
+                        && (after_tens || matches!(toks[j - 1].lower.as_str(), "linh" | "lẻ")));
                 if w == "and" {
                     // only inside a number: "two hundred and five"
                     if !toks.get(j + 1).is_some_and(|n| {
@@ -561,6 +571,9 @@ mod tests {
         assert_eq!(vals("1,5 tỷ"), [1.5e9]);
         assert_eq!(vals("hai triệu rưỡi"), [2.5e6]);
         assert_eq!(vals("hai mươi lăm người"), [25.0]);
+        // Unpunctuated ASR output: consecutive numbers stay separate.
+        assert_eq!(vals("CHÍN MƯƠI BỐN CHÍN MƯƠI LĂM"), [94.0, 95.0]);
+        assert_eq!(vals("năm mươi hai năm mươi ba"), [52.0, 53.0]);
         assert_eq!(vals("200.000.000 đ"), [2e8]);
         assert_eq!(vals("doanh thu đạt hai tỷ ba"), [2.3e9]);
         assert_eq!(vals("ba trăm hai khách"), [320.0]);

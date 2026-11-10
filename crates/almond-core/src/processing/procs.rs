@@ -66,7 +66,7 @@ fn ensure_model(core: &Core, info: &CapsInfo, slot: &str, model: &str) -> Result
         return Err(Error::NotFound(format!(
             "model {model} ({slot}) is not installed in Ollama at {}; run `ollama pull {model}` \
              or choose another model in Settings",
-            core.ollama_url()
+            super::ollama_url(core)
         )));
     }
     Ok(())

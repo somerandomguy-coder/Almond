@@ -197,10 +197,11 @@ fn scan_once(core: &Core, cur: &mut Cursor) -> Result<bool> {
             match body {
                 EventBody::ArtifactAdd(a) => {
                     core.notifier.emit(notifications::ARTIFACT_ADDED, &a);
-                    if a.kind.is(ArtifactKind::TITLE) && local {
-                        if let Err(e) = apply_title(core, &a) {
-                            tracing::warn!("updating meeting title: {e}");
-                        }
+                    if a.kind.is(ArtifactKind::TITLE)
+                        && local
+                        && let Err(e) = apply_title(core, &a)
+                    {
+                        tracing::warn!("updating meeting title: {e}");
                     }
                     dirty.insert(a.meeting_id);
                 }

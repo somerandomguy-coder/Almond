@@ -46,7 +46,7 @@ async fn real_30_min_meeting_through_the_chain() {
     let core = api.core.clone();
     let info = core.processing.refresh_capabilities(&core).await;
     assert!(
-        info.llm_error.is_none() && !info.llm_models.is_empty(),
+        !info.llm_models.is_empty(),
         "Ollama not available: {:?}",
         info.llm_error
     );
@@ -129,6 +129,8 @@ async fn real_30_min_meeting_through_the_chain() {
             .list_artifacts(&m.id, Some("verdicts"))
             .unwrap()
             .is_empty()
+            && took.contains_key("verify.all")
+            && took.contains_key("enhance_notes.llm")
         {
             break;
         }

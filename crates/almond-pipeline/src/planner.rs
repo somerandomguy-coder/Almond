@@ -32,6 +32,8 @@ pub struct PlanPolicy {
     /// Params per processor (e.g. `{"lang": "vi"}` for `summarize.llm`).
     pub params: BTreeMap<String, Value>,
     pub priority: i32,
+    /// Per-processor priority offsets on top of `priority` (e.g. summary before notes).
+    pub priorities: BTreeMap<String, i32>,
     /// Re-plan processors whose previous job failed (default: no, avoid retry storms).
     pub retry_failed: bool,
 }
@@ -98,7 +100,7 @@ pub fn plan(
                 inputs: vec![],
                 requires: d.requires.clone(),
                 params: policy.params.get(&name).cloned().unwrap_or(Value::Null),
-                priority: policy.priority,
+                priority: policy.priority + policy.priorities.get(&name).copied().unwrap_or(0),
             });
             continue;
         }
@@ -129,7 +131,7 @@ pub fn plan(
             inputs,
             requires: d.requires.clone(),
             params: policy.params.get(&name).cloned().unwrap_or(Value::Null),
-            priority: policy.priority,
+            priority: policy.priority + policy.priorities.get(&name).copied().unwrap_or(0),
         });
     }
     out

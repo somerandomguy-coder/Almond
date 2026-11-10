@@ -160,7 +160,7 @@ async fn jobs_list(core: Arc<Core>, p: JobsListParams) -> ApiResult<Vec<JobProgr
         }
     }
     // Newest first.
-    v.sort_by(|a, b| b.job.requested_at.cmp(&a.job.requested_at));
+    v.sort_by_key(|j| std::cmp::Reverse(j.job.requested_at));
     Ok(v)
 }
 

@@ -21,7 +21,7 @@ mod stubs;
 use crate::router::Router;
 use crate::{Core, Shared};
 use almond_llm::{Ollama, OllamaConfig};
-use almond_pipeline::{JobRunner, RunnerConfig};
+use almond_pipeline::{JobRunner, PlanPolicy, RunnerConfig};
 use almond_types::api::JobProgress;
 use almond_types::llm::LlmProvider;
 use almond_types::store::{BlobStore, Store};
@@ -88,6 +88,22 @@ impl State {
                 // LLM calls on a shared GPU can be slow; renew often, expire after 10 min silence.
                 lease_ms: 10 * 60_000,
                 retry_backoff: Duration::from_secs(3),
+                // Transcript first, then summary and its fact-check, title, action items, notes.
+                policy: PlanPolicy {
+                    priorities: [
+                        ("transcribe.local", 5),
+                        ("summarize.llm", 4),
+                        ("verify.extract_claims", 4),
+                        ("verify.all", 4),
+                        ("title.llm", 3),
+                        ("action_items.llm", 2),
+                        ("enhance_notes.llm", 1),
+                    ]
+                    .into_iter()
+                    .map(|(k, v)| (k.to_string(), v))
+                    .collect(),
+                    ..Default::default()
+                },
                 ..Default::default()
             },
         ));
@@ -140,7 +156,7 @@ impl State {
         if let Some(p) = &src.override_ {
             return Ok(p.clone());
         }
-        let url = core.ollama_url();
+        let url = ollama_url(core);
         if let Some((u, p)) = &src.ollama
             && *u == url
         {
@@ -175,6 +191,12 @@ impl State {
     fn spawn(&self, f: impl std::future::Future<Output = ()> + Send + 'static) {
         self.tasks.lock().unwrap().push(tokio::spawn(f));
     }
+}
+
+/// `core.ollama_url()` made connectable: `OLLAMA_HOST=0.0.0.0:11434` (a server bind address, set
+/// on this PC) becomes `http://127.0.0.1:11434`.
+pub(crate) fn ollama_url(core: &Core) -> String {
+    almond_llm::ollama::normalize_host(&core.ollama_url())
 }
 
 pub(crate) fn register(r: &mut Router) {

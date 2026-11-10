@@ -9,6 +9,7 @@ You may only:
 2. add short new notes with important details the user missed: decisions, numbers, owners, deadlines, open questions.
 Rules:
 - Use only information stated in the transcript. Never invent anything.
+- The transcript may be raw speech recognition: no punctuation, Vietnamese in ALL CAPS, numbers spelled out in words (NĂM MƯƠI HAI = 52, HAI TRĂM TRIỆU = 200 000 000). Read spelled-out numbers carefully and write normal capitalization.
 - Every added note must cite the transcript lines that support it (the numbers in square brackets at the start of each line).
 - Do not add notes that repeat what the user already wrote.
 - Write added notes in {{output_language}}.
@@ -28,5 +29,6 @@ Transcript (each line: [index] time speaker: text):
 Return JSON with:
 - "user_cites": for user notes the transcript supports: {"note": <n index>, "cites": [line numbers]}.
 - "additions": new notes, each {"after": <n index of the user note it belongs under, or -1 for the top>, "style": "heading" | "bullet" | "todo" | "paragraph", "level": 0-2 (indent), "text": "...", "cites": [line numbers]}.
-Place each addition right under the user note it expands. If there are no user notes, write complete structured notes as additions with "after": -1 (a few headings with bullets underneath).
-Keep additions concise (usually 3-12). Write them in {{output_language}}.
+Place each addition right under the user note it expands. Keep additions concise (usually 3-12).
+If there are no user notes, write complete structured notes as additions with "after": -1: 2-5 headings, and under EVERY heading 2-5 "bullet" additions (level 0) with the concrete facts (who, what, numbers, dates). A heading is never left without bullets; headings need no citations, bullets do.
+Write them in {{output_language}}.

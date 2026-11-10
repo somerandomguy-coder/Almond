@@ -118,10 +118,18 @@ pub(crate) async fn detect(core: &Core, st: &State) -> CapsInfo {
         info.capabilities.push(Capability::new("gpu"));
     }
     match st.llm_provider(core) {
-        Ok(p) => match tokio::time::timeout(Duration::from_secs(4), p.list_models()).await {
+        // A busy Ollama (shared GPU, model loading) can take seconds to list its models.
+        Ok(p) => match tokio::time::timeout(Duration::from_secs(20), p.list_models()).await {
             Ok(Ok(models)) => info.llm_models = models,
             Ok(Err(e)) => info.llm_error = Some(e.to_string()),
-            Err(_) => info.llm_error = Some(format!("{} did not answer", core.ollama_url())),
+            Err(_) => {
+                // Slow, not gone: keep the last known models rather than dropping `llm`.
+                info.llm_models = st.caps.lock().unwrap().llm_models.clone();
+                info.llm_error = Some(format!(
+                    "{} did not answer in 20 s",
+                    super::ollama_url(core)
+                ));
+            }
         },
         Err(e) => info.llm_error = Some(e.to_string()),
     }
@@ -271,14 +279,14 @@ pub(crate) fn select(core: &Core, info: &CapsInfo, slot: ModelSlot) -> Result<()
             return Err(Error::Invalid(format!(
                 "cannot select {}: Ollama is not available at {} ({e})",
                 slot.model,
-                core.ollama_url()
+                super::ollama_url(core)
             )));
         }
         if !info.has_model(&slot.model) {
             let name = ollama_name(&slot.model);
             return Err(Error::NotFound(format!(
                 "model {name} is not installed in Ollama at {} (run `ollama pull {name}`)",
-                core.ollama_url(),
+                super::ollama_url(core),
             )));
         }
     }
