@@ -60,6 +60,14 @@ export class MockApi implements AlmondApi {
   private rec: RecordingStatus = { ...IDLE };
   private recTimer: ReturnType<typeof setInterval> | null = null;
   private liveSegments: Segment[] = [];
+  private importCancels = new Set<string>();
+  /** What the mock "file picker" returns (`null` = the user closed it). Tests may change it. */
+  pickedFile: string | null = "C:\\Users\\me\\Recordings\\Phỏng vấn khách hàng.m4a";
+
+  /** Stand-in for the native file dialog (see lib/importMedia.ts). */
+  pickFile(): Promise<string | null> {
+    return Promise.resolve(this.pickedFile);
+  }
 
   constructor(opts: MockOptions = {}) {
     this.speed = opts.speed ?? 1;
@@ -353,6 +361,47 @@ export class MockApi implements AlmondApi {
       this.meetings = this.meetings.filter((m) => m.id !== id);
       this.artifacts = this.artifacts.filter((a) => a.meeting_id !== id);
       return null;
+    },
+    "meetings.import": async function (p) {
+      const path = p.path.trim();
+      const fileName = path.split(/[\\/]/).pop() ?? path;
+      if (!fileName) throw new ApiError(-32602, "path is empty");
+      if (/\.(txt|pdf|docx?)$/i.test(fileName)) throw new ApiError(-32005, `cannot import ${fileName}: not an audio or video file`);
+      const now = Date.now();
+      const id = ulid(now);
+      const duration = 23 * 60_000 + 41_000;
+      const base = { meeting_id: id, path, file_name: fileName, duration_ms: duration, decoder: "symphonia", error: null };
+      const steps = 8;
+      for (let i = 0; i <= steps; i++) {
+        if (this.importCancels.delete(id)) {
+          this.emit("import.progress", { ...base, stage: "cancelled", progress: null, processed_ms: 0 });
+          throw new ApiError(-32603, "cancelled");
+        }
+        this.emit("import.progress", { ...base, stage: "decoding", progress: i / steps, processed_ms: Math.round((duration * i) / steps) });
+        await this.sleep(150);
+      }
+      this.emit("import.progress", { ...base, stage: "storing", progress: 1, processed_ms: duration });
+      const m: Meeting = {
+        id,
+        title: p.title?.trim() || fileName.replace(/\.[^.]+$/, ""),
+        tz: Intl.DateTimeFormat().resolvedOptions().timeZone ?? null,
+        started_at: now - duration,
+        ended_at: now,
+        kind: { type: "imported" },
+        calendar_event: null,
+        languages: p.language ? [p.language] : [],
+        audio: [{ channel: "mixed", blob: ulid(now + 2), codec: "opus", sample_rate: 16000, offset_ms: 0, duration_ms: duration }],
+        notes_doc: ulid(now + 1),
+        tags: [],
+      };
+      this.meetings.push(m);
+      this.emit("import.progress", { ...base, stage: "done", progress: 1, processed_ms: duration });
+      void this.finishRecording(m);
+      return { ...m };
+    },
+    "meetings.importCancel": function ({ meeting_id }) {
+      this.importCancels.add(meeting_id);
+      return true;
     },
     "recording.start": async function (p) {
       if (this.rec.state !== "idle") throw new ApiError(-32000, "already recording");

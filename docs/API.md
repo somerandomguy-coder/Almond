@@ -29,6 +29,8 @@ The UI never touches storage directly — it only calls these methods.
 | `meetings.create` | `CreateMeetingParams` | `Meeting` |
 | `meetings.update` | `UpdateMeetingParams` | `Meeting` |
 | `meetings.delete` | `{ id }` | `null` |
+| `meetings.import` | `{ path, title?, language?: "vi" \| "en" }` — an audio/video file on this device (WAV, MP3, M4A/AAC, FLAC, OGG Opus/Vorbis, MP4/MOV, MKV/WebM decoded in-process; other formats through `ffmpeg` on `PATH`, else `-32005` naming the format) | `Meeting` (`kind: imported`, one `mixed` Opus track, `blob.available`; resolves when stored, then processing runs `transcribe.local` → … as for recordings; `ended_at` = file modification time, `started_at` = `ended_at` − duration; `title` defaults to the file name). Progress: `import.progress` |
+| `meetings.importCancel` | `{ meeting_id }` (from `import.progress`) | `boolean` (an import was running; it then fails and stores nothing) |
 | `recording.start` | `StartRecordingParams` | `RecordingStatus` |
 | `recording.stop` | `{}` | `RecordingStatus` (pipeline jobs are queued automatically) |
 | `recording.status` | `{}` | `RecordingStatus` |
@@ -88,6 +90,7 @@ The UI never touches storage directly — it only calls these methods.
 | `sync.progress` | `SyncProgress` |
 | `calendar.reminder` | `MeetingReminder` |
 | `models.downloadProgress` | `ModelDownloadProgress` |
+| `import.progress` | `{ meeting_id, path, file_name, stage: "decoding" \| "storing" \| "done" \| "failed" \| "cancelled", progress: number \| null, processed_ms, duration_ms: number \| null, decoder: "symphonia" \| "opus" \| "ffmpeg" \| null, error: string \| null }` (≈ every 250 ms during `meetings.import`) |
 
 ## External processors (JSON-RPC over stdio or HTTP)
 

@@ -23,6 +23,10 @@ tokio = { version = "1.54.1", features = ["rt-multi-thread", "macros", "sync", "
 tracing = "0.1"
 base64 = "0.22"
 iana-time-zone = "0.1.65"
+# meetings.import: pure-Rust demux/decode (WAV, MP3, AAC/M4A/MP4/MOV, FLAC, Ogg, MKV/WebM, ...).
+symphonia = { version = "0.5.5", default-features = false, features = ["all"] }
+# meetings.import: Opus in Ogg/WebM/MKV (symphonia has no Opus decoder); same libopus as almond-audio.
+opus = "0.4"
 
 [features]
 default = []

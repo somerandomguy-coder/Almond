@@ -9,6 +9,7 @@
 //! | speech engines (routing table, model cache, test overrides) | [`engines`] |
 //! | `speech_models` / `download_speech_model` (used by processing's `models.*`) | [`models`] |
 //! | `audio.url` (Tauri asset protocol, mixed playback file) | [`playback`] |
+//! | `meetings.import` / `meetings.importCancel` (audio/video file → imported meeting) | [`import`] |
 //!
 //! Files on disk (under `CoreConfig::data_dir`):
 //! - `recordings/<meeting>/<started_at_ms>/`: crash-safe Opus chunks of a recording in progress
@@ -17,6 +18,7 @@
 //! - `playback/<meeting>.opus`: mic + system mixed for the audio player (a cache, safe to delete).
 
 pub mod engines;
+pub mod import;
 pub mod live;
 pub mod models;
 pub mod playback;
@@ -113,6 +115,15 @@ pub(crate) fn register(r: &mut Router) {
             url: path.map(|p| playback::asset_url(&p, &core.cfg.platform)),
         })
     });
+    r.add(import::MEETINGS_IMPORT, |core, p: import::ImportParams| async move {
+        ApiResult::Ok(import::import(&core, p).await?)
+    });
+    r.add(
+        import::MEETINGS_IMPORT_CANCEL,
+        |_core, p: import::ImportCancelParams| async move {
+            ApiResult::Ok(import::cancel(&p.meeting_id))
+        },
+    );
 }
 
 pub(crate) fn start(core: Arc<Core>) {
