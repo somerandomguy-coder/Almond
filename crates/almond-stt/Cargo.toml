@@ -58,3 +58,7 @@ name = "live"
 
 [[example]]
 name = "stt_eval"
+
+[[example]]
+name = "lid_dump"
+required-features = ["whisper"]

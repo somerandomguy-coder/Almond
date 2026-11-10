@@ -48,6 +48,23 @@ pub trait ChunkDecoder: Send + 'static {
     fn decode(&mut self, samples: &[f32], prompt: Option<&str>) -> Result<ChunkResult>;
 }
 
+impl ChunkDecoder for Box<dyn ChunkDecoder> {
+    fn decode(&mut self, samples: &[f32], prompt: Option<&str>) -> Result<ChunkResult> {
+        (**self).decode(samples, prompt)
+    }
+}
+
+/// Re-decodes each finished live segment before its final is emitted (e.g. with the
+/// language-routed offline engine, so finals are in the right language and use the whole
+/// segment as context). Partials still come from the fast [`ChunkDecoder`].
+pub trait SegmentRefiner: Send + 'static {
+    /// `audio` = the segment's audio plus a little padding, starting at absolute `audio_t0_ms`;
+    /// `seg` = the segment as committed by LocalAgreement (absolute times). Returns the
+    /// replacement (its idx and channel are overwritten), or `None` to keep `seg`.
+    fn refine(&mut self, audio: &[f32], audio_t0_ms: u64, seg: &Segment)
+    -> Result<Option<Segment>>;
+}
+
 /// Tuning knobs.
 #[derive(Debug, Clone)]
 pub struct StreamConfig {
@@ -123,11 +140,16 @@ pub struct LocalAgreement<D: ChunkDecoder> {
     lang: Option<LangTag>,
     /// Tail of finalized text, used as decoding context.
     context: String,
+    refiner: Option<Box<dyn SegmentRefiner>>,
 }
+
+/// Audio kept around a segment for [`SegmentRefiner::refine`].
+const REFINE_PAD_MS: u64 = 250;
 
 impl<D: ChunkDecoder> LocalAgreement<D> {
     pub fn new(decoder: D, cfg: StreamConfig) -> Self {
         LocalAgreement {
+            refiner: None,
             decoder,
             cfg,
             channel: AudioChannel::Mixed,
@@ -146,6 +168,12 @@ impl<D: ChunkDecoder> LocalAgreement<D> {
 
     pub fn decoder_mut(&mut self) -> &mut D {
         &mut self.decoder
+    }
+
+    /// Re-decode every segment with `r` before emitting its final.
+    pub fn with_refiner(mut self, r: Box<dyn SegmentRefiner>) -> Self {
+        self.refiner = Some(r);
+        self
     }
 
     /// Feed one frame; returns updates (possibly none).
@@ -356,9 +384,39 @@ impl<D: ChunkDecoder> LocalAgreement<D> {
         }
     }
 
+    /// The refiner's replacement for `seg` (same idx / channel), or `seg` itself.
+    fn refined(&mut self, seg: Segment) -> Segment {
+        let Some(r) = self.refiner.as_mut() else {
+            return seg;
+        };
+        let Some(t0) = self.buf_t0 else { return seg };
+        let a = (seg.t0_ms as u64).saturating_sub(REFINE_PAD_MS).max(t0);
+        let b = (seg.t1_ms as u64 + REFINE_PAD_MS).min(t0 + samples_to_ms(self.buf.len()));
+        if b <= a {
+            return seg;
+        }
+        let audio = &self.buf[ms_to_samples(a - t0)..ms_to_samples(b - t0).min(self.buf.len())];
+        match r.refine(audio, a, &seg) {
+            Ok(Some(mut s)) => {
+                s.idx = seg.idx;
+                s.channel = seg.channel;
+                s
+            }
+            Ok(None) => seg,
+            Err(e) => {
+                tracing::warn!("live caption refinement failed: {e}");
+                seg
+            }
+        }
+    }
+
     fn finalize(&mut self) -> SttUpdate {
         let words = std::mem::take(&mut self.seg_words);
         let seg = self.make_segment(&words);
+        let seg = self.refined(seg);
+        if seg.lang.is_some() {
+            self.lang = seg.lang.clone();
+        }
         self.context.push(' ');
         self.context.push_str(&seg.text);
         if self.context.len() > 2000 {
@@ -392,9 +450,11 @@ pub struct PseudoStream<D: ChunkDecoder> {
 
 impl<D: ChunkDecoder> PseudoStream<D> {
     pub fn new(decoder: D, cfg: StreamConfig) -> Self {
-        PseudoStream {
-            inner: Some(LocalAgreement::new(decoder, cfg)),
-        }
+        Self::from_local_agreement(LocalAgreement::new(decoder, cfg))
+    }
+
+    pub fn from_local_agreement(la: LocalAgreement<D>) -> Self {
+        PseudoStream { inner: Some(la) }
     }
 
     async fn run<F>(&mut self, f: F) -> Result<Vec<SttUpdate>>

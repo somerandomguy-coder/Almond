@@ -6,6 +6,7 @@
 //! routed for that language (vi -> PhoWhisper / Zipformer, en -> whisper-turbo, ...).
 
 use crate::audio::{VadParams, ms_to_samples, pack_windows, samples_to_ms, split_on_silence};
+use crate::langid::{LidObs, LidPolicy, decide};
 use crate::transcript::{ChannelSegments, build_transcript};
 use almond_types::artifact::body::{Segment, Transcript};
 use almond_types::meeting::AudioChannel;
@@ -19,6 +20,24 @@ use std::sync::Arc;
 pub trait LanguageId: Send + Sync {
     /// Most likely language among `allowed` (any language if empty) and its probability.
     fn identify(&self, samples: &[f32], allowed: &[LangTag]) -> Result<(LangTag, f32)>;
+
+    /// Probabilities of the `allowed` languages (renormalized), most likely first. The default
+    /// spreads `1 - p(best)` evenly over the other allowed languages.
+    fn probabilities(&self, samples: &[f32], allowed: &[LangTag]) -> Result<Vec<(LangTag, f32)>> {
+        let (best, p) = self.identify(samples, allowed)?;
+        let others: Vec<&LangTag> = allowed
+            .iter()
+            .filter(|l| l.primary() != best.primary())
+            .collect();
+        let rest = if others.is_empty() {
+            0.0
+        } else {
+            (1.0 - p).max(0.0) / others.len() as f32
+        };
+        let mut v = vec![(best, p)];
+        v.extend(others.into_iter().map(|l| (LangTag(l.primary()), rest)));
+        Ok(v)
+    }
 }
 
 #[cfg(feature = "whisper")]
@@ -26,6 +45,11 @@ impl LanguageId for crate::whisper::WhisperModel {
     fn identify(&self, samples: &[f32], allowed: &[LangTag]) -> Result<(LangTag, f32)> {
         let mut st = self.create_state()?;
         self.identify_language(&mut st, samples, allowed)
+    }
+
+    fn probabilities(&self, samples: &[f32], allowed: &[LangTag]) -> Result<Vec<(LangTag, f32)>> {
+        let mut st = self.create_state()?;
+        self.language_probs(&mut st, samples, allowed)
     }
 }
 
@@ -35,12 +59,96 @@ pub struct RoutedEngine {
     /// Primary language subtag -> engine.
     pub engines: BTreeMap<String, Arc<dyn SttEngine>>,
     pub fallback: Arc<dyn SttEngine>,
+    /// How LID probabilities become a language per utterance.
+    pub policy: LidPolicy,
+    /// A segment decoded in a secondary language with a lower mean word probability than this
+    /// (or a secondary-language window that decodes to nothing) is re-decoded in the primary
+    /// language (the first allowed one). `None` = trust the language decision.
+    pub verify_min_confidence: Option<f32>,
 }
 
+/// Default for [`RoutedEngine::verify_min_confidence`] (eval/stt/RESULTS.md).
+pub const VERIFY_MIN_CONFIDENCE: f32 = 0.6;
+
 impl RoutedEngine {
+    pub fn new(
+        lid: Arc<dyn LanguageId>,
+        engines: BTreeMap<String, Arc<dyn SttEngine>>,
+        fallback: Arc<dyn SttEngine>,
+    ) -> Self {
+        RoutedEngine {
+            lid,
+            engines,
+            fallback,
+            policy: LidPolicy::default(),
+            verify_min_confidence: Some(VERIFY_MIN_CONFIDENCE),
+        }
+    }
+
     fn engine_for(&self, lang: &LangTag) -> &Arc<dyn SttEngine> {
         self.engines.get(&lang.primary()).unwrap_or(&self.fallback)
     }
+}
+
+/// Utterances (VAD regions) of `samples` with a language each, decided by `policy` from the
+/// LID probabilities of every region (see [`crate::langid`]). `allowed` = candidate languages,
+/// primary first (empty: Whisper's top guess per region, no smoothing).
+pub fn identify_regions(
+    lid: &dyn LanguageId,
+    samples: &[f32],
+    allowed: &[LangTag],
+    policy: &LidPolicy,
+) -> Result<Vec<(usize, usize, LangTag)>> {
+    // Short min-silence: speaker/language changes in conversation often have gaps of only
+    // 250-500 ms; merging them made English turns get routed (and lost) as Vietnamese on the
+    // synthetic meeting. Engines re-split with their own VAD.
+    let vad = VadParams {
+        min_silence_ms: 200,
+        ..VadParams::default()
+    };
+    let regions = split_on_silence(samples, &vad);
+    if allowed.is_empty() {
+        return regions
+            .into_iter()
+            .map(|(a, b)| Ok((a, b, lid.identify(&samples[a..b], allowed)?.0)))
+            .collect();
+    }
+    let mut langs: Vec<LangTag> = vec![];
+    for l in allowed {
+        if !langs.iter().any(|x| x.primary() == l.primary()) {
+            langs.push(LangTag(l.primary()));
+        }
+    }
+    let mut obs = Vec::with_capacity(regions.len());
+    let mut prev_end = 0usize;
+    for &(a, b) in &regions {
+        // LID needs no padding-sized decision for sub-evidence regions, but the call is cheap
+        // next to decoding and keeps the debug output complete.
+        let probs = lid.probabilities(&samples[a..b], &langs)?;
+        obs.push(LidObs {
+            dur_ms: samples_to_ms(b - a),
+            gap_ms: samples_to_ms(a.saturating_sub(prev_end)),
+            probs,
+        });
+        prev_end = b;
+    }
+    let decided = decide(&obs, &langs, policy);
+    if std::env::var_os("ALMOND_STT_DEBUG").is_some() {
+        for ((a, b), (o, l)) in regions.iter().zip(obs.iter().zip(&decided)) {
+            eprintln!(
+                "[lid] {}..{} ms {:?} -> {}",
+                samples_to_ms(*a),
+                samples_to_ms(*b),
+                o.probs,
+                l.0
+            );
+        }
+    }
+    Ok(regions
+        .into_iter()
+        .zip(decided)
+        .map(|((a, b), l)| (a, b, l))
+        .collect())
 }
 
 #[async_trait]
@@ -86,33 +194,48 @@ impl SttEngine for RoutedEngine {
                 let lid = self.lid.clone();
                 let x = samples.to_vec();
                 let allowed = opts.allowed_languages.clone();
-                // Short min-silence: speaker/language changes in conversation often have gaps of
-                // only 250-500 ms; merging them made English turns get routed (and lost) as
-                // Vietnamese on the synthetic meeting. Engines re-split with their own VAD.
-                let vad = VadParams {
-                    min_silence_ms: 200,
-                    ..VadParams::default()
-                };
+                let policy = self.policy.clone();
                 let regions = tokio::task::spawn_blocking(move || {
-                    split_on_silence(&x, &vad)
-                        .into_iter()
-                        .map(|(a, b)| Ok((a, b, lid.identify(&x[a..b], &allowed)?.0)))
-                        .collect::<Result<Vec<_>>>()
+                    identify_regions(lid.as_ref(), &x, &allowed, &policy)
                 })
                 .await
                 .map_err(Error::other)??;
                 pack_same_language(regions)
             }
         };
+        // Language-ID'd windows in a secondary language are checked against the decoder's
+        // confidence; doubtful ones go to the primary language's engine instead.
+        let primary = opts.allowed_languages.first().map(|l| LangTag(l.primary()));
+        let verify = match (&opts.language, &primary, self.verify_min_confidence) {
+            (None, Some(p), Some(min)) if self.engines.contains_key(&p.primary()) => {
+                Some((p.clone(), min))
+            }
+            _ => None,
+        };
         for (a, b, lang) in windows {
             let win = &samples[a..b];
+            let base = t_offset_ms + samples_to_ms(a);
             let mut o = opts.clone();
             o.language = Some(lang.clone());
             let segs = self
                 .engine_for(&lang)
-                .transcribe(win, t_offset_ms + samples_to_ms(a), channel, &o)
+                .transcribe(win, base, channel, &o)
                 .await?;
-            out.extend(segs);
+            match &verify {
+                Some((p, min)) if p.primary() != lang.primary() => {
+                    let mut o = opts.clone();
+                    o.language = Some(p.clone());
+                    let primary_engine = self.engine_for(p).clone();
+                    out.extend(
+                        verify_segments(segs, win, base, *min, |x, off| {
+                            let (e, o) = (primary_engine.clone(), o.clone());
+                            async move { e.transcribe(&x, off, channel, &o).await }
+                        })
+                        .await?,
+                    );
+                }
+                _ => out.extend(segs),
+            }
         }
         for (i, s) in out.iter_mut().enumerate() {
             s.idx = i as u32;
@@ -130,6 +253,56 @@ impl SttEngine for RoutedEngine {
             None => self.fallback.start_stream(opts),
         }
     }
+}
+
+/// Re-decode doubtful secondary-language segments with the primary engine (`redecode(audio,
+/// t_offset_ms)`): segments whose confidence is below `min_conf`, or the whole window when the
+/// secondary engine kept nothing (it dropped what it heard as a hallucination). `win` starts at
+/// absolute `base_ms`.
+async fn verify_segments<F, Fut>(
+    segs: Vec<Segment>,
+    win: &[f32],
+    base_ms: u64,
+    min_conf: f32,
+    redecode: F,
+) -> Result<Vec<Segment>>
+where
+    F: Fn(Vec<f32>, u64) -> Fut,
+    Fut: std::future::Future<Output = Result<Vec<Segment>>>,
+{
+    if segs.is_empty() {
+        if has_speech(win) {
+            return redecode(win.to_vec(), base_ms).await;
+        }
+        return Ok(segs);
+    }
+    let pad = 150u64;
+    let win_end = base_ms + samples_to_ms(win.len());
+    let mut out = vec![];
+    let mut last_end = base_ms;
+    for s in segs {
+        if s.confidence.is_some_and(|c| c >= min_conf) || s.confidence.is_none() {
+            last_end = last_end.max(s.t1_ms as u64);
+            out.push(s);
+            continue;
+        }
+        let a = (s.t0_ms as u64).saturating_sub(pad).max(base_ms).max(last_end);
+        let b = (s.t1_ms as u64 + pad).min(win_end);
+        if b <= a {
+            continue;
+        }
+        let x = &win[ms_to_samples(a - base_ms)..ms_to_samples(b - base_ms).min(win.len())];
+        if std::env::var_os("ALMOND_STT_DEBUG").is_some() {
+            eprintln!(
+                "[route] {}..{} ms: {:?} (conf {:?}) -> primary engine",
+                a, b, s.text, s.confidence
+            );
+        }
+        let r = redecode(x.to_vec(), a).await?;
+        last_end = b;
+        out.extend(r);
+    }
+    Ok(out)
 }
 
 /// Merge consecutive same-language regions into decode windows (<= 28 s, gaps <= 5 s).
@@ -320,11 +493,7 @@ mod tests {
         let mut engines = BTreeMap::new();
         engines.insert("vi".to_string(), vi);
         engines.insert("en".to_string(), en.clone());
-        let r = RoutedEngine {
-            lid: Arc::new(FixedLid("en")),
-            engines,
-            fallback: en,
-        };
+        let r = RoutedEngine::new(Arc::new(FixedLid("en")), engines, en);
         let segs = r
             .transcribe(
                 &voice(3000),
@@ -337,6 +506,96 @@ mod tests {
         assert_eq!(segs.len(), 1);
         assert_eq!(segs[0].text, "hello");
         assert!(segs[0].t0_ms >= 1000);
+    }
+
+    /// Whisper-like LID that calls everything English with probability `p_en`.
+    struct EnLid(f32);
+    impl LanguageId for EnLid {
+        fn identify(&self, _: &[f32], _: &[LangTag]) -> Result<(LangTag, f32)> {
+            Ok((LangTag::en(), self.0))
+        }
+    }
+
+    /// One segment per call with a fixed text and confidence.
+    struct Fixed(&'static str, f32);
+    #[async_trait]
+    impl SttEngine for Fixed {
+        fn model(&self) -> SttModelInfo {
+            MockStt::default().model()
+        }
+        async fn transcribe(
+            &self,
+            s: &[f32],
+            t: u64,
+            channel: AudioChannel,
+            o: &SttOptions,
+        ) -> Result<Vec<Segment>> {
+            Ok(vec![Segment {
+                idx: 0,
+                t0_ms: t as u32,
+                t1_ms: (t + samples_to_ms(s.len())) as u32,
+                channel,
+                speaker: None,
+                lang: o.language.clone(),
+                text: self.0.into(),
+                confidence: Some(self.1),
+                words: None,
+            }])
+        }
+        fn start_stream(&self, o: SttOptions) -> Result<Box<dyn SttStream>> {
+            MockStt::default().start_stream(o)
+        }
+    }
+
+    fn vi_en(lid: f32, en_conf: f32) -> RoutedEngine {
+        let mut engines: BTreeMap<String, Arc<dyn SttEngine>> = BTreeMap::new();
+        engines.insert("vi".into(), Arc::new(Fixed("xin chào", 0.9)));
+        let en: Arc<dyn SttEngine> = Arc::new(Fixed("hello", en_conf));
+        engines.insert("en".into(), en.clone());
+        RoutedEngine::new(Arc::new(EnLid(lid)), engines, en)
+    }
+
+    fn vi_en_opts() -> SttOptions {
+        SttOptions {
+            allowed_languages: vec![LangTag::vi(), LangTag::en()],
+            ..Default::default()
+        }
+    }
+
+    #[tokio::test]
+    async fn short_utterance_with_doubtful_lid_stays_primary() {
+        // 0.8 s, Whisper says 90 % English: the prior wins
+        let segs = vi_en(0.9, 0.9)
+            .transcribe(&voice(800), 0, AudioChannel::Mic, &vi_en_opts())
+            .await
+            .unwrap();
+        assert_eq!(segs[0].text, "xin chào");
+        // the old behaviour routed it to English
+        let mut raw = vi_en(0.9, 0.9);
+        raw.policy = LidPolicy::raw();
+        let segs = raw
+            .transcribe(&voice(800), 0, AudioChannel::Mic, &vi_en_opts())
+            .await
+            .unwrap();
+        assert_eq!(segs[0].text, "hello");
+    }
+
+    #[tokio::test]
+    async fn long_confident_english_is_english_unless_decoding_disagrees() {
+        let segs = vi_en(0.99, 0.9)
+            .transcribe(&voice(4000), 0, AudioChannel::Mic, &vi_en_opts())
+            .await
+            .unwrap();
+        assert_eq!(segs[0].text, "hello");
+        assert_eq!(segs[0].lang, Some(LangTag::en()));
+        // English decode with low confidence: re-decoded as Vietnamese
+        let segs = vi_en(0.99, 0.3)
+            .transcribe(&voice(4000), 0, AudioChannel::Mic, &vi_en_opts())
+            .await
+            .unwrap();
+        assert_eq!(segs.len(), 1);
+        assert_eq!(segs[0].text, "xin chào");
+        assert_eq!(segs[0].lang, Some(LangTag::vi()));
     }
 
     #[test]

@@ -5,6 +5,9 @@
 //! meeting-wide sequence (first seen = next index). The `SttUpdate` protocol carries over: a
 //! partial for index N replaces the previous partial for N, exactly one final arrives per N.
 //! Times are shifted to the meeting timeline (track offset), mic segments are labelled "me".
+//!
+//! Language: each segment is in one of the meeting language + vi + en, chosen per segment by
+//! the engine from `Speech::live` (finals re-decoded by the language's offline model).
 
 use super::engines::Speech;
 use crate::Core;
@@ -80,7 +83,8 @@ async fn worker(
     mut rx: mpsc::Receiver<AudioFrame>,
     idx: Arc<Mutex<IdxMap>>,
 ) {
-    let l2 = lang.clone();
+    let langs = live_languages(&lang);
+    let l2 = langs.clone();
     let engine = match tokio::task::spawn_blocking(move || speech.live(&l2))
         .await
         .map_err(Error::other)
@@ -92,9 +96,10 @@ async fn worker(
             return;
         }
     };
+    // Language per segment among `langs` (primary first); see `Speech::live`.
     let opts = SttOptions {
-        language: Some(lang.clone()),
-        allowed_languages: vec![lang],
+        language: None,
+        allowed_languages: langs,
         ..Default::default()
     };
     let mut stream = match engine.start_stream(opts) {
@@ -135,6 +140,18 @@ async fn worker(
     }
 }
 
+/// Languages live captions choose between: the meeting's primary language first, then vi and
+/// en (meetings switch languages, as in `transcribe.local`).
+fn live_languages(primary: &LangTag) -> Vec<LangTag> {
+    let mut v = vec![LangTag(primary.primary())];
+    for l in [LangTag::vi(), LangTag::en()] {
+        if !v.iter().any(|x| x.primary() == l.primary()) {
+            v.push(l);
+        }
+    }
+    v
+}
+
 fn stamp(
     mut u: SttUpdate,
     channel: AudioChannel,
@@ -164,6 +181,14 @@ fn stamp(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn live_languages_put_the_meeting_language_first() {
+        let codes = |v: Vec<LangTag>| v.into_iter().map(|l| l.0).collect::<Vec<_>>();
+        assert_eq!(codes(live_languages(&LangTag::vi())), ["vi", "en"]);
+        assert_eq!(codes(live_languages(&LangTag("en-US".into()))), ["en", "vi"]);
+        assert_eq!(codes(live_languages(&LangTag("zh".into()))), ["zh", "vi", "en"]);
+    }
 
     #[test]
     fn indices_are_meeting_wide_and_stable() {

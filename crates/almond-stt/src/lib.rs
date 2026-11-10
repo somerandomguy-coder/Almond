@@ -7,6 +7,9 @@
 //! | [`diarize`] | silence-compacted, chunk-parallel diarization with cross-chunk speaker linking |
 //! | [`streaming`] | engine-agnostic pseudo-streaming (LocalAgreement-2) for live captions |
 //! | [`router`] | per-window language ID + per-language engine routing; meeting pipeline |
+//! | [`langid`] | language decision per utterance (prior, evidence weight, smoothing) |
+//! | [`live`] | language-routed live captions (routed partials, finals re-decoded offline) |
+//! | [`hallucination`] | segment-level Whisper hallucination checks |
 //! | [`transcript`] | channel prior (mic = me), echo removal, speaker assignment, transcript body |
 //! | [`models`] | model registry, resumable + SHA-256-verified downloads |
 //! | [`routing`] | default model per language × device class |
@@ -20,6 +23,9 @@ pub use almond_types as types;
 
 pub mod audio;
 pub mod diarize;
+pub mod hallucination;
+pub mod langid;
+pub mod live;
 pub mod metrics;
 pub mod models;
 pub mod router;

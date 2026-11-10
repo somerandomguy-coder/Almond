@@ -96,6 +96,10 @@ impl ZipformerModel {
         &self.info
     }
 
+    pub fn config(&self) -> &SherpaConfig {
+        &self.cfg
+    }
+
     fn lang(&self) -> Option<LangTag> {
         self.info.languages.first().cloned()
     }
@@ -213,6 +217,15 @@ pub struct SherpaEngine {
 impl SherpaEngine {
     pub fn new(model: Arc<ZipformerModel>) -> Self {
         SherpaEngine { model }
+    }
+
+    pub fn model_arc(&self) -> &Arc<ZipformerModel> {
+        &self.model
+    }
+
+    /// The decoder live captions use (whole-buffer re-decode per step).
+    pub fn chunk_decoder(&self) -> impl ChunkDecoder + use<> {
+        ZipformerChunkDecoder(self.model.clone())
     }
 }
 
