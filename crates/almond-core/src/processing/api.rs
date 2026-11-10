@@ -13,7 +13,7 @@ use almond_types::actions::{ActionDescriptor, ActionProposal, ActionProposals, A
 use almond_types::api::{JobProgress, ModelEntry, ModelSlot, RerunParams, notifications};
 use almond_types::artifact::ArtifactBody;
 use almond_types::event::EventBody;
-use almond_types::job::{Job, JobStatus};
+use almond_types::job::{Capability, Job, JobStatus};
 use almond_types::pipeline::{Processor, ProcessorDescriptor};
 use almond_types::store::Store;
 use almond_types::verify::VerifierDescriptor;
@@ -151,6 +151,7 @@ async fn rerun(core: Arc<Core>, mut p: RerunParams) -> ApiResult<Job> {
 async fn jobs_list(core: Arc<Core>, p: JobsListParams) -> ApiResult<Vec<JobProgress>> {
     let mut v = core.processing.runner.list(p.status)?;
     let live = core.processing.progress.lock().unwrap().clone();
+    let info = core.processing.capabilities();
     for j in &mut v {
         if let Some(lp) = live.get(&j.job.id)
             && j.status == JobStatus::Claimed
@@ -158,10 +159,38 @@ async fn jobs_list(core: Arc<Core>, p: JobsListParams) -> ApiResult<Vec<JobProgr
             j.progress = lp.progress;
             j.message = lp.message.clone();
         }
+        if j.status == JobStatus::Pending && j.message.is_empty() {
+            j.message = waiting_reason(&info, &j.job.requires);
+        }
     }
     // Newest first.
     v.sort_by_key(|j| std::cmp::Reverse(j.job.requested_at));
     Ok(v)
+}
+
+/// Why a pending job isn't running here, for the UI ("Waiting: Ollama isn't running ...").
+fn waiting_reason(info: &caps::CapsInfo, requires: &[Capability]) -> String {
+    let missing: Vec<&Capability> = requires
+        .iter()
+        .filter(|r| !info.capabilities.iter().any(|c| c.satisfies(r)))
+        .collect();
+    if missing.is_empty() {
+        return String::new();
+    }
+    if missing
+        .iter()
+        .any(|r| r.0 == "llm" || r.0.starts_with("llm:"))
+        && let Some(e) = &info.llm_error
+    {
+        return format!(
+            "Waiting: no AI model available on this device ({e}). Start Ollama, or sync with a device that has it."
+        );
+    }
+    let names: Vec<&str> = missing.iter().map(|c| c.0.as_str()).collect();
+    format!(
+        "Waiting for a device that can run it (needs {}); sync with one.",
+        names.join(", ")
+    )
 }
 
 async fn register_external(

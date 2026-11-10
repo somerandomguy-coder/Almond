@@ -260,7 +260,9 @@ impl LlmTasks {
         let (lang_name, title, _) = self.base_vars(input, &tpl);
         let chunks = input.transcript.chunks(self.cfg.chunk_tokens);
         if chunks.is_empty() {
-            return Err(Error::Invalid("transcript is empty".into()));
+            return Err(Error::Invalid(
+                "no speech was detected in this recording".into(),
+            ));
         }
         let n = chunks.len();
         let mut parts: Vec<RawSections> = vec![];
@@ -398,7 +400,9 @@ impl LlmTasks {
         let notes_txt = render_for_prompt(&lines);
         let chunks = input.transcript.chunks(self.cfg.chunk_tokens);
         if chunks.is_empty() {
-            return Err(Error::Invalid("transcript is empty".into()));
+            return Err(Error::Invalid(
+                "no speech was detected in this recording".into(),
+            ));
         }
         let n = chunks.len();
         let mut user_cites: BTreeMap<usize, Vec<Value>> = BTreeMap::new();
@@ -531,7 +535,7 @@ impl LlmTasks {
             .chunks(self.cfg.title_tokens)
             .into_iter()
             .next()
-            .ok_or_else(|| Error::Invalid("transcript is empty".into()))?;
+            .ok_or_else(|| Error::Invalid("no speech was detected in this recording".into()))?;
         let text = input.transcript.render(&first);
         let v = self
             .call_json(

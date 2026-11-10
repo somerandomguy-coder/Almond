@@ -283,6 +283,11 @@ function MeetingView({ detail }: { detail: MeetingDetail }) {
                   {enhanceRunning ? t("meeting.enhancing") : enhanced ? t("meeting.reenhance") : t("meeting.enhance")}
                 </Button>
               )}
+              {!isRecording && (
+                <Button variant="ghost" onClick={del} disabled={busy} title={t("meeting.delete")} aria-label={t("meeting.delete")}>
+                  <Icon.trash width={16} height={16} />
+                </Button>
+              )}
             </div>
           </div>
           {err && <p className="mt-2 text-sm text-bad">{err}</p>}
