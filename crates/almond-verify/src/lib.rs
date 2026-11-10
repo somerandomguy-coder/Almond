@@ -30,6 +30,7 @@ pub mod numbers;
 pub mod registry;
 pub mod text;
 pub mod triples;
+pub mod tz;
 pub mod verifiers;
 
 pub use adapter::{VerifyProcessor, build_context};

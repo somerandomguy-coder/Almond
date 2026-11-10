@@ -27,7 +27,7 @@ use almond_types::{Artifact, DeviceId, Error, Id, Result};
 use serde_json::Value;
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::sync::atomic::AtomicBool;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, RwLock};
 use std::time::Duration;
 use tokio::sync::broadcast;
 
@@ -89,7 +89,7 @@ pub struct JobRunner {
     store: Arc<dyn Store>,
     registry: Arc<ProcessorRegistry>,
     blobs: Arc<dyn BlobStore>,
-    caps: Vec<Capability>,
+    caps: RwLock<Vec<Capability>>,
     cfg: RunnerConfig,
     clock: HlcClock,
     now: NowFn,
@@ -114,7 +114,7 @@ impl JobRunner {
             store,
             registry,
             blobs,
-            caps: capabilities,
+            caps: RwLock::new(capabilities),
             cfg,
             clock: HlcClock::new(),
             now: Arc::new(now_ms),
@@ -137,9 +137,14 @@ impl JobRunner {
         &self.registry
     }
 
+    /// Replace the advertised capabilities (e.g. after Ollama started or a model was pulled).
+    pub fn set_capabilities(&self, caps: Vec<Capability>) {
+        *self.caps.write().unwrap_or_else(|p| p.into_inner()) = caps;
+    }
+
     /// Advertised capabilities incl. the implicit `device:<id>`.
     pub fn capabilities(&self) -> Vec<Capability> {
-        let mut c = self.caps.clone();
+        let mut c = self.caps.read().unwrap_or_else(|p| p.into_inner()).clone();
         c.push(Capability::new(format!("device:{}", self.device())));
         c
     }
@@ -241,9 +246,12 @@ impl JobRunner {
 
     /// Request every job the DAG wants for `meeting` that doesn't exist yet.
     pub fn plan_meeting(&self, meeting: &Id) -> Result<Vec<Job>> {
+        let Some(m) = self.store.get_meeting(meeting)? else {
+            return Ok(vec![]);
+        };
         let arts = self.store.list_artifacts(meeting, None)?;
         let states = job_states(self.store.as_ref())?;
-        plan(&self.registry, meeting, &arts, &states, &self.cfg.policy)
+        plan(&self.registry, &m, &arts, &states, &self.cfg.policy)
             .into_iter()
             .map(|p| {
                 self.request(JobRequest {
@@ -293,11 +301,35 @@ impl JobRunner {
     }
 
     fn inputs_ready(&self, job: &Job) -> Result<bool> {
-        if self.store.get_meeting(&job.meeting_id)?.is_none() {
+        let Some(m) = self.store.get_meeting(&job.meeting_id)? else {
+            return Ok(false);
+        };
+        if !self.audio_ready(job, &m)? {
             return Ok(false);
         }
         for i in &job.inputs {
             if self.store.get_artifact(i)?.is_none() {
+                return Ok(false);
+            }
+        }
+        Ok(true)
+    }
+
+    /// For audio processors: every audio track of the meeting is in the local blob store (blobs
+    /// sync lazily, so a job may become runnable here only after the audio arrives).
+    fn audio_ready(&self, job: &Job, m: &almond_types::Meeting) -> Result<bool> {
+        let needs_audio = self
+            .registry
+            .descriptor(&job.processor)
+            .is_some_and(|d| d.needs_audio);
+        if !needs_audio {
+            return Ok(true);
+        }
+        if m.audio.is_empty() {
+            return Ok(false);
+        }
+        for t in &m.audio {
+            if !self.blobs.has(&t.blob)? {
                 return Ok(false);
             }
         }
@@ -402,6 +434,9 @@ impl JobRunner {
         let Some(meeting) = self.store.get_meeting(&job.meeting_id)? else {
             return skip("meeting not synced yet");
         };
+        if !self.audio_ready(job, &meeting)? {
+            return skip("audio not on this device yet");
+        }
         let mut inputs: Vec<Artifact> = vec![];
         for id in &job.inputs {
             match self.store.get_artifact(id)? {

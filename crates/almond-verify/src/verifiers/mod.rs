@@ -31,6 +31,14 @@ pub struct VerifyConfig {
     pub tz_offset_min: Option<i32>,
 }
 
+impl VerifyConfig {
+    /// Effective UTC offset (minutes) for `ctx`: job params (`tz_offset_min`, then IANA `tz`),
+    /// then the meeting's IANA `tz`, then [`Self::tz_offset_min`], else `None` (local zone).
+    pub fn tz(&self, ctx: &VerifyContext) -> Option<i32> {
+        crate::tz::offset_for(&ctx.params, &ctx.meeting).or(self.tz_offset_min)
+    }
+}
+
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn verdict(
     ctx: &VerifyContext,

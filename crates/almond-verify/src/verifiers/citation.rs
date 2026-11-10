@@ -34,7 +34,7 @@ impl Verifier for CitationExistsVerifier {
         claims: &[Claim],
         ctx: &VerifyContext,
     ) -> almond_types::Result<Vec<Verdict>> {
-        let idx = EvidenceIndex::new(ctx, self.config.tz_offset_min);
+        let idx = EvidenceIndex::new(ctx, self.config.tz(ctx));
         let mut out = Vec::new();
         for c in claims {
             if c.evidence.is_empty() {

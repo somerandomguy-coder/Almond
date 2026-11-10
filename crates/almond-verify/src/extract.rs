@@ -391,10 +391,7 @@ impl Processor for ExtractClaimsProcessor {
     }
 }
 
-/// `params.tz_offset_min` (minutes east of UTC) if present.
+/// UTC offset (minutes) from the job params (`tz_offset_min` or IANA `tz`) or the meeting's `tz`.
 pub(crate) fn tz_param(ctx: &JobCtx) -> Option<i32> {
-    ctx.params
-        .get("tz_offset_min")
-        .and_then(|v| v.as_i64())
-        .map(|v| v as i32)
+    crate::tz::offset_for(&ctx.params, &ctx.meeting)
 }

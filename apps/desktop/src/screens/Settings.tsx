@@ -198,8 +198,8 @@ function Models() {
   const [downloads, setDownloads] = useState<Record<string, JobProgress>>({});
 
   useEffect(() => {
-    // TODO(contract): there is no `models.slots` getter yet; the selection is mirrored in settings.
-    void api.call("settings.get", { key: "models.slots" }).then((v) => Array.isArray(v) && setSlots(v as unknown as ModelSlot[]));
+    // Effective selection: the user's overrides plus this device's defaults.
+    void api.call("models.slots", {}).then(setSlots);
   }, [api]);
   useNotification("job.progress", (j) => {
     if (j.job.processor !== "models.download") return;

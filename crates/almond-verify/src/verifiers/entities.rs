@@ -38,7 +38,7 @@ impl Verifier for EntitiesVerifier {
         claims: &[Claim],
         ctx: &VerifyContext,
     ) -> almond_types::Result<Vec<Verdict>> {
-        let idx = EvidenceIndex::new(ctx, self.config.tz_offset_min);
+        let idx = EvidenceIndex::new(ctx, self.config.tz(ctx));
         let all = idx.all_segments();
         // Known people = speakers + attendees + capitalized names said in the transcript.
         let mut known = idx.people.clone();

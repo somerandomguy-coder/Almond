@@ -659,6 +659,9 @@ export class MockApi implements AlmondApi {
       this.settings.set("models.slots", slots as unknown as JsonValue);
       return null;
     },
+    "models.slots": function () {
+      return ((this.settings.get("models.slots") as unknown as ModelSlot[]) ?? []).map((s) => ({ ...s }));
+    },
     "settings.get": function ({ key }) {
       return this.settings.get(key) ?? null;
     },
