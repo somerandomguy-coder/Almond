@@ -106,6 +106,11 @@ impl WhisperModel {
         self.ctx.create_state().map_err(Error::other)
     }
 
+    /// Whether the model was trained to predict timestamp tokens (PhoWhisper was not).
+    fn has_timestamps(&self) -> bool {
+        !self.info.id.contains("phowhisper")
+    }
+
     /// The single language this model is restricted to (PhoWhisper -> vi), if any.
     fn fixed_language(&self) -> Option<LangTag> {
         (self.info.languages.len() == 1).then(|| self.info.languages[0].clone())
@@ -236,7 +241,16 @@ impl WhisperModel {
         params.set_language(Some(&lang_code));
         params.set_translate(false);
         params.set_no_context(true);
-        params.set_token_timestamps(true);
+        let timestamps = self.has_timestamps();
+        if timestamps {
+            params.set_token_timestamps(true);
+        } else {
+            // PhoWhisper was fine-tuned with <|notimestamps|>: decoding in timestamp mode makes
+            // it emit a junk first token ("doctoral", "hashtag") and timestamps past the end of
+            // the audio. One segment per (VAD-utterance) window; word times are interpolated.
+            params.set_no_timestamps(true);
+            params.set_single_segment(true);
+        }
         params.set_print_progress(false);
         params.set_print_realtime(false);
         params.set_print_special(false);
@@ -246,7 +260,7 @@ impl WhisperModel {
         // Whisper's own anti-hallucination rules (the reference implementation's defaults,
         // spelled out): re-decode at a higher temperature when the text is repetitive (entropy)
         // or improbable (logprob); treat a window as silence when no_speech is high and the
-        // text improbable. [`is_hallucination`] adds segment-level checks on top.
+        // text improbable. [`crate::hallucination::reason`] adds segment-level checks on top.
         params.set_temperature(0.0);
         params.set_temperature_inc(0.2);
         params.set_entropy_thold(2.4);
@@ -310,9 +324,19 @@ impl WhisperModel {
                 .to_str_lossy()
                 .map(|s| s.into_owned())
                 .unwrap_or_default();
+            let (t0_ms, t1_ms) = if timestamps {
+                (
+                    (seg.start_timestamp().max(0) * 10) as u64,
+                    (seg.end_timestamp().max(0) * 10) as u64,
+                )
+            } else {
+                let end = samples_to_ms(samples.len());
+                spread_word_times(&mut words, 0, end);
+                (0, end)
+            };
             out.push(RawSegment {
-                t0_ms: (seg.start_timestamp().max(0) * 10) as u64,
-                t1_ms: (seg.end_timestamp().max(0) * 10) as u64,
+                t0_ms,
+                t1_ms,
                 text,
                 words,
                 no_speech_p: seg.no_speech_probability(),
@@ -407,6 +431,19 @@ impl WhisperModel {
             prev = Some((lang, window_text));
         }
         Ok(segs)
+    }
+}
+
+/// Word times proportional to word length between `t0` and `t1` (no timestamps decoded).
+fn spread_word_times(words: &mut [HypWord], t0: u64, t1: u64) {
+    let total: usize = words.iter().map(|w| w.text.trim().chars().count().max(1)).sum();
+    let span = t1.saturating_sub(t0) as f64;
+    let mut acc = 0usize;
+    for w in words.iter_mut() {
+        let n = w.text.trim().chars().count().max(1);
+        w.t0_ms = t0 + (span * acc as f64 / total.max(1) as f64) as u64;
+        acc += n;
+        w.t1_ms = t0 + (span * acc as f64 / total.max(1) as f64) as u64;
     }
 }
 

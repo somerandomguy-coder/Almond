@@ -36,7 +36,7 @@ fn main() {
                 crops = args
                     .next()
                     .unwrap()
-                    .split(',')
+                    .split([',', ':'])
                     .map(|s| s.parse().unwrap())
                     .collect()
             }

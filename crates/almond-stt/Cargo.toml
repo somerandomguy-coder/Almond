@@ -62,3 +62,7 @@ name = "stt_eval"
 [[example]]
 name = "lid_dump"
 required-features = ["whisper"]
+
+[[example]]
+name = "lang_eval"
+required-features = ["whisper", "sherpa"]
