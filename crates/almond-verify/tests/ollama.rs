@@ -4,11 +4,11 @@
 #[path = "../examples/scorecard/ollama.rs"]
 mod ollama;
 
+use almond_types::DeviceId;
 use almond_types::artifact::body::VerdictLabel;
 use almond_types::llm::LlmProvider;
 use almond_types::mock::fixtures;
 use almond_types::verify::{Verifier, VerifyContext};
-use almond_types::DeviceId;
 use almond_verify::extract::ClaimExtractor;
 use almond_verify::verifiers::NliVerifier;
 use std::sync::Arc;
