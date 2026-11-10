@@ -17,9 +17,9 @@ use sherpa_onnx::{
     FastClusteringConfig, OfflineModelConfig, OfflineRecognizer, OfflineRecognizerConfig,
     OfflineSpeakerDiarization, OfflineSpeakerDiarizationConfig,
     OfflineSpeakerSegmentationModelConfig, OfflineSpeakerSegmentationPyannoteModelConfig,
-    OfflineTransducerModelConfig, SpeakerEmbeddingExtractorConfig,
+    OfflineTransducerModelConfig, SpeakerEmbeddingExtractor, SpeakerEmbeddingExtractorConfig,
 };
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 fn s(p: std::path::PathBuf) -> Option<String> {
     Some(p.to_string_lossy().into_owned())
@@ -267,6 +267,10 @@ pub struct DiarizerConfig {
     pub threshold: f32,
     pub min_duration_on: f32,
     pub min_duration_off: f32,
+    /// Fast mode ([`crate::diarize::FastDiarizer`]: VAD windows, one embedding per window,
+    /// agglomerative clustering) for recordings without a speaker-count hint. `None` = the
+    /// sherpa pyannote pipeline over the whole recording (much slower on long meetings).
+    pub fast: Option<crate::diarize::FastConfig>,
 }
 
 impl Default for DiarizerConfig {
@@ -281,6 +285,7 @@ impl Default for DiarizerConfig {
             threshold: 1.0,
             min_duration_on: 0.3,
             min_duration_off: 0.5,
+            fast: Some(crate::diarize::FastConfig::default()),
         }
     }
 }
@@ -316,18 +321,19 @@ impl SherpaDiarizer {
     }
 
     fn build(&self, num_speakers: Option<u32>) -> Result<OfflineSpeakerDiarization> {
+        let threads = self.cfg.threads;
         let c = OfflineSpeakerDiarizationConfig {
             segmentation: OfflineSpeakerSegmentationModelConfig {
                 pyannote: OfflineSpeakerSegmentationPyannoteModelConfig {
                     model: Some(self.seg_model.clone()),
                     ..Default::default()
                 },
-                num_threads: self.cfg.threads,
+                num_threads: threads,
                 ..Default::default()
             },
             embedding: SpeakerEmbeddingExtractorConfig {
                 model: Some(self.emb_model.clone()),
-                num_threads: self.cfg.threads,
+                num_threads: threads,
                 ..Default::default()
             },
             clustering: FastClusteringConfig {
@@ -342,11 +348,36 @@ impl SherpaDiarizer {
             .ok_or_else(|| Error::Other("sherpa-onnx failed to create diarizer".into()))
     }
 
+    /// Diarize a whole recording. Without a speaker-count hint and with `cfg.fast` set, uses the
+    /// fast window-embedding path ([`crate::diarize::FastDiarizer`]); otherwise the sherpa
+    /// pyannote pipeline.
     pub fn diarize_sync(
         &self,
         samples: &[f32],
         num_speakers: Option<u32>,
     ) -> Result<Vec<SpeakerTurn>> {
+        if let (None, Some(fc)) = (num_speakers, &self.cfg.fast) {
+            let workers = fc.workers.max(1);
+            let threads = (self.cfg.threads / workers as i32).max(1);
+            let pool = (0..workers)
+                .map(|_| {
+                    SpeakerEmbeddingExtractor::create(&SpeakerEmbeddingExtractorConfig {
+                        model: Some(self.emb_model.clone()),
+                        num_threads: threads,
+                        ..Default::default()
+                    })
+                    .map(Mutex::new)
+                    .ok_or_else(|| {
+                        Error::Other("sherpa-onnx failed to create the embedding extractor".into())
+                    })
+                })
+                .collect::<Result<Vec<_>>>()?;
+            let d = crate::diarize::FastDiarizer {
+                embedder: SherpaEmbedder { pool },
+                cfg: fc.clone(),
+            };
+            return d.diarize_sync(samples);
+        }
         let d = self.build(num_speakers)?;
         let r = d
             .process(samples)
@@ -359,6 +390,35 @@ impl SherpaDiarizer {
                 speaker: SpeakerId(format!("S{}", s.speaker + 1)),
             })
             .collect())
+    }
+}
+
+/// A pool of 3D-Speaker extractors, one per embedding worker.
+struct SherpaEmbedder {
+    pool: Vec<Mutex<SpeakerEmbeddingExtractor>>,
+}
+
+impl crate::diarize::Embedder for SherpaEmbedder {
+    fn embed(&self, samples: &[f32]) -> Result<Vec<f32>> {
+        // FastDiarizer runs as many workers as there are extractors, so one is normally free.
+        let ex = loop {
+            if let Some(g) = self.pool.iter().find_map(|m| m.try_lock().ok()) {
+                break g;
+            }
+            std::thread::yield_now();
+        };
+        let st = ex
+            .create_stream()
+            .ok_or_else(|| Error::Other("sherpa-onnx: embedding stream".into()))?;
+        st.accept_waveform(crate::audio::SR as i32, samples);
+        st.input_finished();
+        if !ex.is_ready(&st) {
+            return Err(Error::Invalid(
+                "too little audio for a speaker embedding".into(),
+            ));
+        }
+        ex.compute(&st)
+            .ok_or_else(|| Error::Other("sherpa-onnx: embedding failed".into()))
     }
 }
 

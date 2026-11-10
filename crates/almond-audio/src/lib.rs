@@ -36,7 +36,7 @@ pub use capture::{CaptureSession, CaptureSummary};
 pub use clock::CaptureClock;
 #[cfg(not(target_os = "android"))]
 pub use cpal_backend::CpalBackend;
-pub use file::open_wav;
+pub use file::{WavBackend, open_wav, open_wav_channel};
 pub use pipeline::{AlignConfig, PipelineStream, RawSender, StatsSnapshot, StreamStats};
 pub use push::PushAudioSource;
 pub use recorder::{Codec, RecorderConfig, SessionRecorder, recover_session, unfinished_sessions};

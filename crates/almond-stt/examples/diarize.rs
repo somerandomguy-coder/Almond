@@ -1,9 +1,13 @@
-//! Diarize one channel of a WAV with sherpa-onnx (pyannote-seg-3.0 + 3D-Speaker).
+//! Diarize one channel of a WAV with sherpa-onnx models (3D-Speaker embeddings; pyannote-seg-3.0
+//! for the `--pyannote` path).
 //!
 //! ```text
 //! cargo run --release -p almond-stt --features sherpa --example diarize -- file.wav \
-//!     [--channel 1] [--speakers N] [--threshold 0.5] [--out turns.json]
+//!     [--channel 1] [--speakers N] [--out turns.json]
+//!     [--pyannote [--threshold 1.0]] [--fast-threshold 0.6] [--window-ms 3000] [--workers 4]
 //! ```
+//! Default: the fast window-embedding diarizer (`almond_stt::diarize::FastDiarizer`).
+//! `--pyannote` (or `--speakers N`) runs sherpa's pyannote pipeline over the whole recording.
 
 use almond_stt::models::ModelManager;
 use almond_stt::sherpa::{DiarizerConfig, SherpaDiarizer};
@@ -19,8 +23,35 @@ fn main() {
         None,
     );
     let mut threads = None;
+    let mut fast = Some(almond_stt::diarize::FastConfig::default());
     while let Some(a) = args.next() {
+        let num = |v: Option<String>| -> f64 { v.unwrap().parse().unwrap() };
         match a.as_str() {
+            "--fast-threshold" => {
+                let v = num(args.next());
+                if let Some(c) = fast.as_mut() {
+                    c.threshold = v as f32
+                }
+            }
+            "--window-ms" => {
+                let v = num(args.next());
+                if let Some(c) = fast.as_mut() {
+                    c.window_ms = v as u64
+                }
+            }
+            "--workers" => {
+                let v = num(args.next());
+                if let Some(c) = fast.as_mut() {
+                    c.workers = v as usize
+                }
+            }
+            "--min-speaker-ms" => {
+                let v = num(args.next());
+                if let Some(c) = fast.as_mut() {
+                    c.min_speaker_ms = v as u64
+                }
+            }
+            "--pyannote" => fast = None,
             "--channel" => ch = Some(args.next().unwrap().parse::<usize>().unwrap()),
             "--speakers" => n = Some(args.next().unwrap().parse::<u32>().unwrap()),
             "--threshold" => thr = args.next().unwrap().parse().unwrap(),
@@ -41,6 +72,7 @@ fn main() {
         DiarizerConfig {
             threshold: thr,
             threads: threads.unwrap_or(DiarizerConfig::default().threads),
+            fast,
             ..Default::default()
         },
     )

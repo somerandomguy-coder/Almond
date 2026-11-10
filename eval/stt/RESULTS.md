@@ -8,7 +8,7 @@ Datasets are downloaded at run time into `~/.almond/eval/stt/` and are **not** c
 
 | Device class | Vietnamese (offline / post-meeting) | Vietnamese (live captions) | English (offline) | English (live) | Lang-ID | Diarization |
 |---|---|---|---|---|---|---|
-| **PC, 16 GB GPU** | `sherpa:zipformer-vi-30m-int8` *(PhoWhisper via whisper.cpp is broken, see GPU runs)* | `sherpa:zipformer-vi-30m-int8` | `whisper:large-v3-turbo` | `whisper:large-v3-turbo` (greedy) | `whisper:large-v3-turbo` | sherpa pyannote-3.0 + 3D-Speaker, threshold 1.0 |
+| **PC, 16 GB GPU** | `sherpa:zipformer-vi-30m-int8` *(PhoWhisper via whisper.cpp is broken, see GPU runs)* | `sherpa:zipformer-vi-30m-int8` | `whisper:large-v3-turbo` | `whisper:large-v3-turbo` (greedy) | `whisper:large-v3-turbo` | 3D-Speaker window embeddings + clustering (`diarize::FastDiarizer`, see Phase 2) |
 | **Fedora laptop, CPU** | `sherpa:zipformer-vi-30m-int8` | `sherpa:zipformer-vi-30m-int8` | `whisper:small` *(or offload to PC)* | `whisper:small` | `whisper:small` | same (RTF ≈ 0.15–0.25 on CPU) |
 | **Samsung A26** | `sherpa:zipformer-vi-30m-int8` | `sherpa:zipformer-vi-30m-int8` | offload to PC | — | — | offload to PC |
 
@@ -150,6 +150,26 @@ times), the PC default for Vietnamese is Zipformer-30M.
 
 **Diarization is now ~80 % of the time.** It runs after transcription on CPU; running it concurrently
 with transcription and/or on the CUDA execution provider is the next speed-up.
+
+### Phase 2: through the core (`transcribe.local`), fast diarization, concurrent pass (2026-11-10)
+
+Same meeting, imported as the Opus tracks a recording produces, run by the `transcribe.local`
+processor in `almond-core` (`post_meeting_pass_30min`, ignored test, `--features cuda,sherpa`):
+
+| Config | WER vi | WER en | WER all | LID | "me" | Speaker (remote VI) | Time |
+|---|---:|---:|---:|---:|---:|---:|---|
+| vi Zipformer-30M, en + LID turbo (GPU), **fast diarizer concurrent** | **6.46 %** | **6.90 %** | **6.74 %** | 100 % | 100 % | **94.5 %** | mic 10 s, system 67 s, diarize 21 s in parallel → **77 s** (82 s incl. decode + model load), RTF 0.046 |
+
+- Diarization: `almond_stt::diarize::FastDiarizer` (VAD windows of ~3 s, one 3D-Speaker
+  embedding each, 4 parallel extractors, average-linkage clustering at cosine distance 0.6, small
+  clusters folded) replaces the sherpa pyannote pipeline (which embeds every second ~10 times).
+  System channel alone (`examples/diarize.rs`, `score_diarization.py`): **45.8 s vs 270 s**, VI
+  utterances attributed 100.0 % (vs 99.5 %), 1 label per true VI speaker (vs 1–2). `--pyannote`
+  keeps the old path; it is also used when a speaker count is given.
+- It runs concurrently with transcription (`router::transcribe_meeting_concurrent`).
+- Timing depends heavily on the shared PC: with other agents compiling (CPU at 100 %) and the GPU
+  shared, the same pass took 352–389 s (transcription of the system channel 254 s); on an idle GPU
+  82 s. The 4.5-min target holds when the GPU is not busy with Ollama.
 
 What went wrong on the way (all fixed and covered by tests/notes):
 - 22/60 English turns were lost when a quiet English turn and a neighbouring Vietnamese turn

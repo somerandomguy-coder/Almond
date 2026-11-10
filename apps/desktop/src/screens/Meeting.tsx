@@ -69,6 +69,7 @@ function MeetingView({ detail }: { detail: MeetingDetail }) {
   const [notesView, setNotesView] = useState<"mine" | "enhanced">(latest(detail.artifacts, Kinds.enhancedNotes) ? "enhanced" : "mine");
   const [focus, setFocus] = useState<{ idx: number; nonce: number } | null>(null);
   const [audioPos, setAudioPos] = useState(0);
+  const [audioSrc, setAudioSrc] = useState<string | null>(null);
   const [enhanceJob, setEnhanceJob] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -88,6 +89,18 @@ function MeetingView({ detail }: { detail: MeetingDetail }) {
     if (u.meeting_id !== id) return;
     setLive((m) => new Map(m).set(u.update.segment.idx, { segment: u.update.segment, final: u.update.is_final }));
   });
+  const audioTracks = meeting.audio.length;
+  useEffect(() => {
+    if (isRecording || audioTracks === 0) return;
+    let cancelled = false;
+    api
+      .call("audio.url", { meeting_id: id })
+      .then((r) => !cancelled && setAudioSrc(r.url))
+      .catch(() => !cancelled && setAudioSrc(null));
+    return () => {
+      cancelled = true;
+    };
+  }, [api, id, isRecording, audioTracks]);
   useNotification("job.progress", (j) => {
     if (j.job.meeting_id !== id) return;
     setJobs((m) => new Map(m).set(j.job.id, j));
@@ -354,7 +367,7 @@ function MeetingView({ detail }: { detail: MeetingDetail }) {
                 {isRecording && <span className="rec-dot h-1.5 w-1.5 rounded-full bg-rec" />}
                 {isRecording ? t("meeting.transcriptLive") : t("meeting.tabs.transcript")}
               </p>
-              {!isRecording && lines.length > 0 && <AudioBar positionMs={audioPos} durationMs={duration} onSeek={setAudioPos} available={meeting.audio.length > 0} />}
+              {!isRecording && lines.length > 0 && <AudioBar positionMs={audioPos} durationMs={duration} onSeek={setAudioPos} available={meeting.audio.length > 0} src={audioSrc} />}
             </div>
             <div className="min-h-0 flex-1">
               <TranscriptPanel

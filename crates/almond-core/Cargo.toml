@@ -29,7 +29,7 @@ default = []
 # Native speech engines (see crates/almond-stt). The desktop app enables these; CI builds without.
 whisper = ["almond-stt/whisper"]
 sherpa = ["almond-stt/sherpa"]
-cuda = ["almond-stt/cuda"]
+cuda = ["whisper", "almond-stt/cuda"]
 
 [dev-dependencies]
 almond-types = { path = "../almond-types", features = ["mock"] }
@@ -38,3 +38,8 @@ loro = "=1.17.1"
 chrono = "0.4.45"
 wiremock = "0.6.5"
 url = "2.5.8"
+hound = "3"
+
+# Beeps on the default output for the ignored real-device test (loopback signal).
+[target.'cfg(not(target_os = "android"))'.dev-dependencies]
+cpal = "0.18"

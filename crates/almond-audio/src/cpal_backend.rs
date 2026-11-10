@@ -68,7 +68,19 @@ impl CpalBackend {
         channel: AudioChannel,
         cfg: &CaptureConfig,
     ) -> Result<PipelineStream> {
-        open_blocking(self.clock(), channel, cfg)
+        open_blocking(self.clock(), channel, cfg, false)
+    }
+
+    /// Like [`CpalBackend::open_stream`], but a missing device is not an error: the stream starts
+    /// with zero-filled (`synthesized`) frames and picks the device up when it appears. Used for
+    /// the loopback channel, whose endpoint can vanish (e.g. an HDMI monitor that went to sleep)
+    /// without that being a reason not to record the microphone.
+    pub fn open_stream_waiting(
+        &self,
+        channel: AudioChannel,
+        cfg: &CaptureConfig,
+    ) -> Result<PipelineStream> {
+        open_blocking(self.clock(), channel, cfg, true)
     }
 }
 
@@ -90,7 +102,7 @@ impl AudioBackend for CpalBackend {
         cfg: CaptureConfig,
     ) -> Result<Box<dyn AudioStream>> {
         let clock = self.clock();
-        let s = tokio::task::spawn_blocking(move || open_blocking(clock, channel, &cfg))
+        let s = tokio::task::spawn_blocking(move || open_blocking(clock, channel, &cfg, false))
             .await
             .map_err(Error::other)??;
         Ok(Box::new(s))
@@ -235,6 +247,7 @@ fn open_blocking(
     clock: CaptureClock,
     channel: AudioChannel,
     cfg: &CaptureConfig,
+    wait_for_device: bool,
 ) -> Result<PipelineStream> {
     let (tx, mut stream) = channel_pair(channel, clock, cfg.frame_ms, AlignConfig::live());
     let stop = Arc::new(AtomicBool::new(false));
@@ -243,7 +256,7 @@ fn open_blocking(
     let stop2 = stop.clone();
     let handle = std::thread::Builder::new()
         .name(format!("almond-capture-{channel:?}").to_lowercase())
-        .spawn(move || capture_loop(channel, device_id, tx, stop2, ready_tx))
+        .spawn(move || capture_loop(channel, device_id, tx, stop2, ready_tx, wait_for_device))
         .map_err(Error::Io)?;
     match ready_rx.recv_timeout(Duration::from_secs(15)) {
         Ok(Ok(name)) => {
@@ -282,6 +295,7 @@ fn capture_loop(
     tx: RawSender,
     stop: Arc<AtomicBool>,
     ready: std::sync::mpsc::Sender<Result<String>>,
+    wait_for_device: bool,
 ) {
     let host = cpal::default_host();
     let mut ready = Some(ready);
@@ -308,8 +322,15 @@ fn capture_loop(
             }
             Err(e) => {
                 if let Some(r) = ready.take() {
-                    let _ = r.send(Err(e));
-                    return;
+                    if !wait_for_device {
+                        let _ = r.send(Err(e));
+                        return;
+                    }
+                    tracing::warn!(
+                        ?channel,
+                        "no device yet ({e}); recording silence until it appears"
+                    );
+                    let _ = r.send(Ok(format!("(waiting for device: {e})")));
                 }
                 let msg = e.to_string();
                 if msg != last_err {
