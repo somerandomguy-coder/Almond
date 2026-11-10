@@ -387,6 +387,10 @@ export class MockApi implements AlmondApi {
         { id: "loopback-default", name: "Speakers (loopback)", channel: "system", backend: "wasapi_loopback", is_default: true },
       ];
     },
+    "audio.url": function () {
+      // The mock has no audio files; the player shows position only.
+      return { url: null };
+    },
     "artifacts.list": function ({ meeting_id, kind }) {
       return this.artifactsFor(meeting_id, kind);
     },

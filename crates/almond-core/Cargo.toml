@@ -21,14 +21,20 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 tokio = { version = "1.54.1", features = ["rt-multi-thread", "macros", "sync", "time", "fs"] }
 tracing = "0.1"
+iana-time-zone = "0.1"
 
 [features]
 default = []
 # Native speech engines (see crates/almond-stt). The desktop app enables these; CI builds without.
 whisper = ["almond-stt/whisper"]
 sherpa = ["almond-stt/sherpa"]
-cuda = ["almond-stt/cuda"]
+cuda = ["whisper", "almond-stt/cuda"]
 
 [dev-dependencies]
 almond-types = { path = "../almond-types", features = ["mock"] }
 tokio = { version = "1.54.1", features = ["rt-multi-thread", "macros", "sync", "time", "fs"] }
+hound = "3"
+
+# Beeps on the default output for the ignored real-device test (loopback signal).
+[target.'cfg(not(target_os = "android"))'.dev-dependencies]
+cpal = "0.18"

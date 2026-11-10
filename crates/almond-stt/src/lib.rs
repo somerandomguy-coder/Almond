@@ -4,6 +4,7 @@
 //! |---|---|
 //! | [`whisper`] (feature `whisper`, `cuda`, `vulkan`) | whisper.cpp engine: PhoWhisper, whisper-large-v3-turbo |
 //! | [`sherpa`] (feature `sherpa`) | sherpa-onnx Zipformer-vi engine + pyannote/3D-Speaker diarizer |
+//! | [`diarize`] | silence-compacted, chunk-parallel diarization with cross-chunk speaker linking |
 //! | [`streaming`] | engine-agnostic pseudo-streaming (LocalAgreement-2) for live captions |
 //! | [`router`] | per-window language ID + per-language engine routing; meeting pipeline |
 //! | [`transcript`] | channel prior (mic = me), echo removal, speaker assignment, transcript body |
@@ -18,6 +19,7 @@
 pub use almond_types as types;
 
 pub mod audio;
+pub mod diarize;
 pub mod metrics;
 pub mod models;
 pub mod router;

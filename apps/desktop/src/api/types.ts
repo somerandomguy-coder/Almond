@@ -12,6 +12,7 @@ import type { CreateMeetingParams } from "../gen/CreateMeetingParams";
 import type { DeviceId } from "../gen/DeviceId";
 import type { EventRef } from "../gen/EventRef";
 import type { Id } from "../gen/Id";
+import type { AudioChannel } from "../gen/AudioChannel";
 import type { Job } from "../gen/Job";
 import type { JobProgress } from "../gen/JobProgress";
 import type { JobStatus } from "../gen/JobStatus";
@@ -50,6 +51,8 @@ export interface ApiMethods {
   "recording.stop": [Record<string, never>, RecordingStatus];
   "recording.status": [Record<string, never>, RecordingStatus];
   "audio.devices": [Record<string, never>, AudioDeviceInfo[]];
+  /** Playable URL (Tauri asset protocol) of a meeting's audio; mic + system mixed when no channel is given; null if not on this device. */
+  "audio.url": [{ meeting_id: Id; channel?: AudioChannel | null }, { url: string | null }];
   "artifacts.list": [{ meeting_id: Id; kind?: string }, Artifact[]];
   "artifacts.get": [{ id: Id }, Artifact];
   "artifacts.rerun": [RerunParams, Job];

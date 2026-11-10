@@ -189,6 +189,92 @@ pub async fn transcribe_meeting(
     Ok(build_transcript(cs))
 }
 
+/// Wall time of each stage of [`transcribe_meeting_concurrent`] (ms).
+#[derive(Debug, Clone, Default, PartialEq, Eq, serde::Serialize)]
+pub struct MeetingTimings {
+    pub transcribe_mic_ms: u64,
+    pub transcribe_system_ms: u64,
+    pub transcribe_mixed_ms: u64,
+    pub diarize_ms: u64,
+    pub total_ms: u64,
+}
+
+fn has_speech(x: &[f32]) -> bool {
+    !split_on_silence(x, &VadParams::default()).is_empty()
+}
+
+/// [`transcribe_meeting`] with diarization of the system / mixed channel running **concurrently**
+/// with transcription (on the 30-min test meeting diarization was ~80 % of the sequential time;
+/// it is CPU-bound while Whisper runs on the GPU). Channels without speech are not diarized.
+pub async fn transcribe_meeting_concurrent(
+    engine: Arc<dyn SttEngine>,
+    diarizer: Option<Arc<dyn Diarizer>>,
+    audio: Arc<MeetingAudio>,
+    opts: &SttOptions,
+    num_speakers: Option<u32>,
+) -> Result<(Transcript, MeetingTimings)> {
+    let t_all = std::time::Instant::now();
+    let diarize = {
+        let audio = audio.clone();
+        async move {
+            let t = std::time::Instant::now();
+            let mut out: (Option<Vec<_>>, Option<Vec<_>>) = (None, None);
+            if let Some(d) = &diarizer {
+                if let Some(x) = audio.system.as_deref()
+                    && has_speech(x)
+                {
+                    out.0 = Some(d.diarize(x, num_speakers).await?);
+                }
+                if let Some(x) = audio.mixed.as_deref()
+                    && has_speech(x)
+                {
+                    out.1 = Some(d.diarize(x, num_speakers).await?);
+                }
+            }
+            Ok::<_, Error>((out, t.elapsed().as_millis() as u64))
+        }
+    };
+    let transcribe = async {
+        let mut cs = ChannelSegments::default();
+        let mut ms = [0u64; 3];
+        for (i, ch, x) in [
+            (0, AudioChannel::Mic, &audio.mic),
+            (1, AudioChannel::System, &audio.system),
+            (2, AudioChannel::Mixed, &audio.mixed),
+        ] {
+            let Some(x) = x else { continue };
+            let t = std::time::Instant::now();
+            let segs = engine.transcribe(x, 0, ch, opts).await?;
+            ms[i] = t.elapsed().as_millis() as u64;
+            match ch {
+                AudioChannel::Mic => cs.mic = segs,
+                AudioChannel::System => cs.system = segs,
+                AudioChannel::Mixed => cs.mixed = segs,
+            }
+        }
+        Ok::<_, Error>((cs, ms))
+    };
+    let (((sys_turns, mixed_turns), diarize_ms), (mut cs, ms)) =
+        tokio::try_join!(diarize, transcribe)?;
+    if !cs.system.is_empty() {
+        cs.system_turns = sys_turns;
+    }
+    if !cs.mixed.is_empty() {
+        cs.mixed_turns = mixed_turns;
+    }
+    let t = build_transcript(cs);
+    Ok((
+        t,
+        MeetingTimings {
+            transcribe_mic_ms: ms[0],
+            transcribe_system_ms: ms[1],
+            transcribe_mixed_ms: ms[2],
+            diarize_ms,
+            total_ms: t_all.elapsed().as_millis() as u64,
+        },
+    ))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -286,5 +372,34 @@ mod tests {
         // identical mock text on both channels at the same time => mic one is treated as echo
         assert_eq!(t.segments.len(), 1);
         assert_eq!(t.segments[0].speaker.as_ref().unwrap().0, "remote:S1");
+    }
+
+    #[tokio::test]
+    async fn concurrent_pipeline_matches_sequential() {
+        let audio = MeetingAudio {
+            mic: Some(voice(2000)),
+            system: Some(voice(3000)),
+            mixed: None,
+        };
+        let seq = transcribe_meeting(
+            &MockStt::default(),
+            Some(&TwoSpeakers),
+            &audio,
+            &SttOptions::default(),
+            None,
+        )
+        .await
+        .unwrap();
+        let (con, timings) = transcribe_meeting_concurrent(
+            Arc::new(MockStt::default()),
+            Some(Arc::new(TwoSpeakers)),
+            Arc::new(audio),
+            &SttOptions::default(),
+            None,
+        )
+        .await
+        .unwrap();
+        assert_eq!(seq, con);
+        assert!(timings.total_ms >= timings.diarize_ms);
     }
 }

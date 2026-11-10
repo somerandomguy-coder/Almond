@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { ActionProposal } from "../../gen/ActionProposal";
 import type { ActionResult } from "../../gen/ActionResult";
@@ -162,11 +162,53 @@ export function JobsList({ jobs }: { jobs: JobProgress[] }) {
 }
 
 /** Audio scrubber. Real playback needs an audio URL from the core (see contract request). */
-export function AudioBar({ positionMs, durationMs, onSeek, available }: { positionMs: number; durationMs: number; onSeek: (ms: number) => void; available: boolean }) {
+export function AudioBar({
+  positionMs,
+  durationMs,
+  onSeek,
+  available,
+  src,
+}: {
+  positionMs: number;
+  durationMs: number;
+  onSeek: (ms: number) => void;
+  available: boolean;
+  /** Playable URL from `audio.url`; without it the bar only tracks a position. */
+  src?: string | null;
+}) {
   const { t } = useTranslation();
+  const audio = useRef<HTMLAudioElement | null>(null);
+  const [playing, setPlaying] = useState(false);
+  // follow external seeks (citation chips, transcript clicks)
+  useEffect(() => {
+    const a = audio.current;
+    if (a && Math.abs(a.currentTime * 1000 - positionMs) > 750) a.currentTime = positionMs / 1000;
+  }, [positionMs]);
+  const toggle = () => {
+    const a = audio.current;
+    if (!a) return;
+    if (a.paused) void a.play().catch(() => setPlaying(false));
+    else a.pause();
+  };
   return (
     <div className="flex items-center gap-3 rounded-full border border-line bg-surface px-3 py-1.5 text-xs text-muted" title={available ? undefined : t("meeting.noAudio")}>
-      <Icon.play width={14} height={14} className={available ? "text-accent" : "text-faint"} />
+      {src ? (
+        <>
+          <audio
+            ref={audio}
+            src={src}
+            preload="metadata"
+            onPlay={() => setPlaying(true)}
+            onPause={() => setPlaying(false)}
+            onTimeUpdate={(e) => onSeek(Math.round(e.currentTarget.currentTime * 1000))}
+          />
+          <button type="button" onClick={toggle} aria-label={t("meeting.audioAt")} aria-pressed={playing} className="text-accent">
+            <Icon.play width={14} height={14} className={playing ? "opacity-60" : undefined} />
+          </button>
+        </>
+      ) : (
+        <Icon.play width={14} height={14} className={available ? "text-accent" : "text-faint"} />
+      )}
       <span className="tabular-nums" data-testid="audio-position">
         {formatClock(positionMs)}
       </span>
