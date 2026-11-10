@@ -31,9 +31,10 @@ jobs:
       - name: Build UI (needed by Tauri crate)
         run: pnpm -C apps/desktop install --frozen-lockfile && pnpm -C apps/desktop build
       - run: cargo fmt --all -- --check
-      # almond-stt's GPU features (cuda/vulkan) need toolkits the runners don't have, and its
-      # whisper/sherpa engines are native builds tested on dev machines; CI checks its default build.
-      - run: cargo clippy --workspace --all-targets --all-features --exclude almond-stt -- -D warnings
-      - run: cargo clippy -p almond-stt --all-targets -- -D warnings
-      - run: cargo test --workspace --all-features --exclude almond-stt
-      - run: cargo test -p almond-stt
+      # No --all-features: the speech features (whisper/sherpa/cuda/vulkan) are forwarded by
+      # almond-core and the desktop app and need native toolkits the runners don't have; they are
+      # built and tested on dev machines (#[ignore]d real-model tests). Optional pure features are
+      # checked explicitly below.
+      - run: cargo clippy --workspace --all-targets -- -D warnings
+      - run: cargo clippy -p almond-audio --all-targets --features webrtc-vad -- -D warnings
+      - run: cargo test --workspace
