@@ -13,7 +13,7 @@
 //! Ollama models are identified as `ollama:<name>` in `models.list` and slots (the UI's
 //! convention); a bare `<name>` is accepted too.
 
-use super::{State, stubs};
+use super::State;
 use crate::Core;
 use crate::settings::keys;
 use almond_llm::ollama::canonical_model_name;
@@ -147,22 +147,9 @@ pub(crate) async fn detect(core: &Core, st: &State) -> CapsInfo {
     if any_chat {
         info.capabilities.push(Capability::new("llm"));
     }
-    match stubs::speech_models(core) {
-        Ok(models) => {
-            for m in models.into_iter().filter(|m| m.installed) {
-                match m.kind.as_str() {
-                    "stt" => {
-                        for l in &m.languages {
-                            info.capabilities.push(Capability::new(format!("stt:{l}")));
-                        }
-                    }
-                    "diarize" => info.capabilities.push(Capability::new("diarize")),
-                    _ => {}
-                }
-            }
-        }
-        Err(e) => tracing::warn!("speech models: {e}"),
-    }
+    // Speech: what this build (features) + installed models can actually run.
+    info.capabilities
+        .extend(crate::capture::speech_capabilities(core));
     info.capabilities.sort();
     info.capabilities.dedup();
     info

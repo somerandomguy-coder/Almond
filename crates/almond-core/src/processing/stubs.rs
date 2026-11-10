@@ -9,21 +9,17 @@
 
 use crate::Core;
 use almond_types::api::ModelEntry;
-use almond_types::{Error, Id, Result};
+use almond_types::{Id, Result};
 use std::sync::Arc;
 
 /// Speech models (STT, diarization, VAD) known to `capture`, with install state.
-pub(crate) fn speech_models(_core: &Core) -> Result<Vec<ModelEntry>> {
-    // TODO(capture): crate::capture::speech_models(core)
-    Ok(vec![])
+pub(crate) fn speech_models(core: &Core) -> Result<Vec<ModelEntry>> {
+    crate::capture::speech_models(core)
 }
 
 /// Download a speech model (emits `models.downloadProgress`).
-pub(crate) async fn download_speech_model(_core: &Arc<Core>, id: &str) -> Result<()> {
-    // TODO(capture): crate::capture::download_speech_model(core, id).await
-    Err(Error::Unsupported(format!(
-        "speech model download is not wired yet ({id})"
-    )))
+pub(crate) async fn download_speech_model(core: &Arc<Core>, id: &str) -> Result<()> {
+    crate::capture::download_speech_model(core, id).await
 }
 
 /// Plain text of a meeting's Loro notes doc.
