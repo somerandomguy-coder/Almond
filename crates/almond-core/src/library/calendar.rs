@@ -139,22 +139,22 @@ fn lock<T>(m: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
 
 /// Open a URL in the system browser (Google sign-in).
 fn system_open(url: &str) -> Result<()> {
-    #[cfg(windows)]
-    let r = std::process::Command::new("rundll32")
-        .args(["url.dll,FileProtocolHandler", url])
-        .spawn();
-    #[cfg(target_os = "macos")]
-    let r = std::process::Command::new("open").arg(url).spawn();
-    #[cfg(target_os = "android")]
-    let r: std::io::Result<std::process::Child> = {
-        let _ = url;
-        return Err(Error::Unsupported(
-            "opening the browser needs the Android plugin (set_url_opener)".into(),
-        ));
+    let cmd: Option<(&str, Vec<&str>)> = if cfg!(windows) {
+        Some(("rundll32", vec!["url.dll,FileProtocolHandler", url]))
+    } else if cfg!(target_os = "macos") {
+        Some(("open", vec![url]))
+    } else if cfg!(target_os = "android") {
+        None
+    } else {
+        Some(("xdg-open", vec![url]))
     };
-    #[cfg(all(unix, not(target_os = "macos"), not(target_os = "android")))]
-    let r = std::process::Command::new("xdg-open").arg(url).spawn();
-    r.map(|_| ())
+    let (prog, args) = cmd.ok_or_else(|| {
+        Error::Unsupported("opening the browser needs the Android plugin (set_url_opener)".into())
+    })?;
+    std::process::Command::new(prog)
+        .args(args)
+        .spawn()
+        .map(|_| ())
         .map_err(|e| Error::Other(format!("could not open the browser: {e}")))
 }
 
