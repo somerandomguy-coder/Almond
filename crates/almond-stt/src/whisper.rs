@@ -7,6 +7,7 @@
 //!   around a [`WhisperChunkDecoder`].
 
 use crate::audio::{VadParams, pack_windows, samples_to_ms, split_on_silence};
+use crate::hallucination;
 use crate::streaming::{ChunkDecoder, ChunkResult, HypWord, PseudoStream, StreamConfig};
 use almond_types::artifact::body::{Segment, Word};
 use almond_types::meeting::AudioChannel;
@@ -105,6 +106,11 @@ impl WhisperModel {
         self.ctx.create_state().map_err(Error::other)
     }
 
+    /// Whether the model was trained to predict timestamp tokens (PhoWhisper was not).
+    fn has_timestamps(&self) -> bool {
+        !self.info.id.contains("phowhisper")
+    }
+
     /// The single language this model is restricted to (PhoWhisper -> vi), if any.
     fn fixed_language(&self) -> Option<LangTag> {
         (self.info.languages.len() == 1).then(|| self.info.languages[0].clone())
@@ -118,33 +124,100 @@ impl WhisperModel {
         samples: &[f32],
         allowed: &[LangTag],
     ) -> Result<(LangTag, f32)> {
+        self.language_probs(state, samples, allowed)?
+            .into_iter()
+            .next()
+            .ok_or_else(|| Error::Invalid("no supported language in allowed_languages".into()))
+    }
+
+    /// Language probabilities on (up to) the first 30 s of `samples`, most likely first. With
+    /// `allowed` non-empty: only those languages (primary subtags), renormalized to sum to 1;
+    /// otherwise the top 5 of all Whisper languages.
+    pub fn language_probs(
+        &self,
+        state: &mut WhisperState,
+        samples: &[f32],
+        allowed: &[LangTag],
+    ) -> Result<Vec<(LangTag, f32)>> {
         if let Some(l) = self.fixed_language() {
-            return Ok((l, 1.0));
+            return Ok(vec![(l, 1.0)]);
         }
         state
             .pcm_to_mel(samples, self.cfg.threads as usize)
             .map_err(Error::other)?;
-        let (best, probs) = state
+        let (_, probs) = state
             .lang_detect(0, self.cfg.threads as usize)
             .map_err(Error::other)?;
-        if allowed.is_empty() {
-            let code = whisper_rs::get_lang_str(best).unwrap_or("en");
-            return Ok((LangTag(code.into()), probs[best as usize]));
-        }
-        let mut cands: Vec<(LangTag, f32)> = allowed
-            .iter()
-            .filter_map(|l| {
-                whisper_rs::get_lang_id(&l.primary())
-                    .map(|id| (LangTag(l.primary()), probs[id as usize]))
-            })
-            .collect();
-        let total: f32 = cands.iter().map(|c| c.1).sum::<f32>().max(1e-9);
+        let mut cands: Vec<(LangTag, f32)> = if allowed.is_empty() {
+            probs
+                .iter()
+                .enumerate()
+                .filter_map(|(i, p)| {
+                    whisper_rs::get_lang_str(i as i32).map(|c| (LangTag(c.into()), *p))
+                })
+                .collect()
+        } else {
+            let mut seen = std::collections::BTreeSet::new();
+            allowed
+                .iter()
+                .filter(|l| seen.insert(l.primary()))
+                .filter_map(|l| {
+                    whisper_rs::get_lang_id(&l.primary())
+                        .map(|id| (LangTag(l.primary()), probs[id as usize]))
+                })
+                .collect()
+        };
         cands.sort_by(|a, b| b.1.total_cmp(&a.1));
-        let (l, p) = cands
-            .into_iter()
-            .next()
-            .ok_or_else(|| Error::Invalid("no supported language in allowed_languages".into()))?;
-        Ok((l, p / total))
+        if allowed.is_empty() {
+            cands.truncate(5);
+        } else {
+            let total: f32 = cands.iter().map(|c| c.1).sum::<f32>().max(1e-9);
+            for c in &mut cands {
+                c.1 /= total;
+            }
+        }
+        Ok(cands)
+    }
+
+    /// Decode `samples` (one utterance, <= 30 s) in `lang` and return the text with Whisper's
+    /// own confidence: mean token log-probability and the no-speech probability. Used to check
+    /// an uncertain language decision by decoding in both candidate languages.
+    pub fn decode_scored(
+        &self,
+        state: &mut WhisperState,
+        samples: &[f32],
+        lang: &LangTag,
+        beam_size: i32,
+    ) -> Result<ScoredText> {
+        let raw = self.decode_window(state, samples, lang, None, beam_size)?;
+        let lps: Vec<f32> = raw
+            .iter()
+            .flat_map(|r| r.logprobs.iter().copied())
+            .collect();
+        let ps: Vec<f32> = raw
+            .iter()
+            .flat_map(|r| r.words.iter().filter_map(|w| w.p))
+            .collect();
+        Ok(ScoredText {
+            mean_p: if ps.is_empty() {
+                0.0
+            } else {
+                ps.iter().sum::<f32>() / ps.len() as f32
+            },
+            text: raw
+                .iter()
+                .map(|r| r.text.as_str())
+                .collect::<String>()
+                .trim()
+                .to_string(),
+            avg_logprob: if lps.is_empty() {
+                f32::NEG_INFINITY
+            } else {
+                lps.iter().sum::<f32>() / lps.len() as f32
+            },
+            no_speech_p: raw.iter().map(|r| r.no_speech_p).fold(0.0, f32::max),
+            n_tokens: lps.len(),
+        })
     }
 
     /// Run `whisper_full` on `samples` (<= 30 s recommended) and return timed segments with
@@ -171,13 +244,31 @@ impl WhisperModel {
         params.set_language(Some(&lang_code));
         params.set_translate(false);
         params.set_no_context(true);
-        params.set_token_timestamps(true);
+        let timestamps = self.has_timestamps();
+        if timestamps {
+            params.set_token_timestamps(true);
+        } else {
+            // PhoWhisper was fine-tuned with <|notimestamps|>: decoding in timestamp mode makes
+            // it emit a junk first token ("doctoral", "hashtag") and timestamps past the end of
+            // the audio. One segment per (VAD-utterance) window; word times are interpolated.
+            params.set_no_timestamps(true);
+            params.set_single_segment(true);
+        }
         params.set_print_progress(false);
         params.set_print_realtime(false);
         params.set_print_special(false);
         params.set_print_timestamps(false);
         params.set_suppress_blank(true);
         params.set_suppress_nst(true);
+        // Whisper's own anti-hallucination rules (the reference implementation's defaults,
+        // spelled out): re-decode at a higher temperature when the text is repetitive (entropy)
+        // or improbable (logprob); treat a window as silence when no_speech is high and the
+        // text improbable. [`crate::hallucination::reason`] adds segment-level checks on top.
+        params.set_temperature(0.0);
+        params.set_temperature_inc(0.2);
+        params.set_entropy_thold(2.4);
+        params.set_logprob_thold(-1.0);
+        params.set_no_speech_thold(0.6);
         if let Some(p) = prompt.filter(|p| !p.trim().is_empty()) {
             params.set_initial_prompt(p);
         }
@@ -192,6 +283,7 @@ impl WhisperModel {
             let mut cur_t0 = 0i64;
             let mut cur_t1 = 0i64;
             let mut cur_p: Vec<f32> = vec![];
+            let mut logprobs: Vec<f32> = vec![];
             let flush = |words: &mut Vec<HypWord>,
                          cur: &mut Vec<u8>,
                          t0: i64,
@@ -228,18 +320,30 @@ impl WhisperModel {
                 cur.extend_from_slice(bytes);
                 cur_t1 = data.t1;
                 cur_p.push(data.p);
+                logprobs.push(data.plog);
             }
             flush(&mut words, &mut cur, cur_t0, cur_t1, &mut cur_p);
             let text = seg
                 .to_str_lossy()
                 .map(|s| s.into_owned())
                 .unwrap_or_default();
+            let (t0_ms, t1_ms) = if timestamps {
+                (
+                    (seg.start_timestamp().max(0) * 10) as u64,
+                    (seg.end_timestamp().max(0) * 10) as u64,
+                )
+            } else {
+                let end = samples_to_ms(samples.len());
+                spread_word_times(&mut words, 0, end);
+                (0, end)
+            };
             out.push(RawSegment {
-                t0_ms: (seg.start_timestamp().max(0) * 10) as u64,
-                t1_ms: (seg.end_timestamp().max(0) * 10) as u64,
+                t0_ms,
+                t1_ms,
                 text,
                 words,
                 no_speech_p: seg.no_speech_probability(),
+                logprobs,
             });
         }
         Ok(out)
@@ -302,10 +406,7 @@ impl WhisperModel {
                 );
             }
             let mut window_text = String::new();
-            for r in raw {
-                if r.text.trim().is_empty() || is_hallucination(&r) {
-                    continue;
-                }
+            for r in clean_segments(raw, win) {
                 window_text.push_str(&r.text);
                 let ps: Vec<f32> = r.words.iter().filter_map(|w| w.p).collect();
                 segs.push(Segment {
@@ -336,6 +437,22 @@ impl WhisperModel {
     }
 }
 
+/// Word times proportional to word length between `t0` and `t1` (no timestamps decoded).
+fn spread_word_times(words: &mut [HypWord], t0: u64, t1: u64) {
+    let total: usize = words
+        .iter()
+        .map(|w| w.text.trim().chars().count().max(1))
+        .sum();
+    let span = t1.saturating_sub(t0) as f64;
+    let mut acc = 0usize;
+    for w in words.iter_mut() {
+        let n = w.text.trim().chars().count().max(1);
+        w.t0_ms = t0 + (span * acc as f64 / total.max(1) as f64) as u64;
+        acc += n;
+        w.t1_ms = t0 + (span * acc as f64 / total.max(1) as f64) as u64;
+    }
+}
+
 /// One whisper.cpp segment with word groups (times relative to the window).
 #[derive(Debug, Clone)]
 struct RawSegment {
@@ -344,33 +461,51 @@ struct RawSegment {
     text: String,
     words: Vec<HypWord>,
     no_speech_p: f32,
+    /// Log-probability of each text token.
+    logprobs: Vec<f32>,
 }
 
-/// Known silence/noise hallucinations of Whisper-family models (YouTube outros etc.).
-const HALLUCINATIONS: &[&str] = &[
-    "hẹn gặp lại các bạn trong những video tiếp theo",
-    "hãy subscribe cho kênh",
-    "cảm ơn các bạn đã theo dõi",
-    "ghiền mì gõ",
-    "thanks for watching",
-    "thank you for watching",
-    "subtitles by the amara.org community",
-];
+/// Output of [`WhisperModel::decode_scored`].
+#[derive(Debug, Clone, PartialEq)]
+pub struct ScoredText {
+    pub text: String,
+    /// Mean log-probability of the text tokens (-inf when nothing was decoded).
+    pub avg_logprob: f32,
+    /// Mean word probability, as in `Segment::confidence`.
+    pub mean_p: f32,
+    pub no_speech_p: f32,
+    pub n_tokens: usize,
+}
 
-fn is_hallucination(r: &RawSegment) -> bool {
-    let n = crate::metrics::normalize(&r.text);
-    let conf = {
-        let ps: Vec<f32> = r.words.iter().filter_map(|w| w.p).collect();
-        if ps.is_empty() {
-            0.0
-        } else {
-            ps.iter().sum::<f32>() / ps.len() as f32
-        }
-    };
-    (r.no_speech_p > 0.6 && conf < 0.5)
-        || HALLUCINATIONS
-            .iter()
-            .any(|h| n.contains(&crate::metrics::normalize(h)))
+/// Apply [`collapse_repeats`] and [`hallucination`] to decoded segments.
+fn clean_segments(raw: Vec<RawSegment>, audio: &[f32]) -> Vec<RawSegment> {
+    let debug = std::env::var_os("ALMOND_STT_DEBUG").is_some();
+    raw.into_iter()
+        .filter_map(|mut r| {
+            let mean = |v: &[f32]| (!v.is_empty()).then(|| v.iter().sum::<f32>() / v.len() as f32);
+            let ps: Vec<f32> = r.words.iter().filter_map(|w| w.p).collect();
+            let score = hallucination::SegmentScore {
+                text: &r.text,
+                t0_ms: r.t0_ms,
+                t1_ms: r.t1_ms,
+                mean_p: mean(&ps).unwrap_or(0.0),
+                avg_logprob: mean(&r.logprobs).unwrap_or(f32::NEG_INFINITY),
+                no_speech_p: r.no_speech_p,
+            };
+            if let Some(why) = hallucination::reason(&score, audio) {
+                if debug {
+                    eprintln!("[whisper] dropped ({why}): {:?}", r.text);
+                }
+                return None;
+            }
+            let before = r.words.len();
+            hallucination::collapse_repeats(&mut r.words);
+            if r.words.len() != before {
+                r.text = r.words.iter().map(|w| w.text.as_str()).collect();
+            }
+            Some(r)
+        })
+        .collect()
 }
 
 /// [`SttEngine`] over a shared [`WhisperModel`].
@@ -449,9 +584,8 @@ impl ChunkDecoder for WhisperChunkDecoder {
         let raw = self
             .model
             .decode_window(&mut self.state, samples, &lang, prompt, 1)?;
-        let words = raw
+        let words = clean_segments(raw, samples)
             .into_iter()
-            .filter(|r| !is_hallucination(r))
             .flat_map(|r| r.words)
             .collect();
         Ok(ChunkResult {

@@ -22,9 +22,10 @@ pub enum DeviceClass {
 /// Which model to use for what.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Route {
-    /// Offline / post-meeting transcription (quality first).
+    /// Offline / post-meeting transcription (quality first). Also re-decodes each live-caption
+    /// final ([`crate::live::LiveRouter`]).
     pub offline: String,
-    /// Live captions (latency first).
+    /// Live-caption partials (latency first).
     pub live: String,
 }
 
@@ -33,7 +34,8 @@ pub struct RoutingTable {
     pub device: DeviceClass,
     /// Primary language subtag ("vi", "en", "zh") -> route.
     pub routes: BTreeMap<String, Route>,
-    /// Used for languages not in `routes` and for language identification.
+    /// Used for languages not in `routes` and for language identification (whose
+    /// probabilities become a language per utterance through [`crate::langid::LidPolicy`]).
     pub fallback: Route,
 }
 
@@ -45,9 +47,11 @@ impl RoutingTable {
         };
         let (vi, en, fallback) = match device {
             // See eval/stt/RESULTS.md. Zipformer-30M: 4.5 % WER on VIVOS, RTF 0.03 on CPU, and
-            // 6.5 % WER in the 30-min GPU meeting run. PhoWhisper through whisper.cpp emits a junk
-            // first token and unusable word timestamps (trained without timestamps), so it is not
-            // a default until that is fixed, even though it adds punctuation and casing.
+            // 6.3 % WER in the 30-min GPU meeting run. PhoWhisper-medium now decodes cleanly
+            // (no-timestamp mode: no junk first token) and adds punctuation and casing, but is
+            // less accurate (8.2 % vs 7.2 % on 150 VIVOS utterances) and translates English
+            // inside Vietnamese speech, so it is not the default. Live: Zipformer partials, each
+            // final re-decoded by the offline model of its language (`live::LiveRouter`).
             DeviceClass::DesktopGpu => (
                 r(
                     "sherpa:zipformer-vi-30m-int8",

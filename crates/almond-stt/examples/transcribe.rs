@@ -3,7 +3,7 @@
 //! ```text
 //! cargo run --release -p almond-stt --features whisper,sherpa --example transcribe -- \
 //!     meeting.wav [--stereo-mic-system] [--vi MODEL] [--en MODEL] [--lid MODEL] \
-//!     [--langs vi,en] [--speakers N] [--no-diarize] [--cpu] [--out transcript.json]
+//!     [--langs vi,en] [--speakers N] [--no-diarize] [--cpu] [--raw-lid] [--out transcript.json]
 //! ```
 //! * mono WAV -> mixed channel, diarized as a whole;
 //! * `--stereo-mic-system`: left = mic ("me"), right = system loopback (diarized remote side).
@@ -34,6 +34,7 @@ async fn main() {
     let mut speakers: Option<u32> = None;
     let mut diarize = true;
     let mut cpu = false;
+    let mut raw_lid = false;
     let mut out: Option<String> = None;
     while let Some(a) = args.next() {
         match a.as_str() {
@@ -52,6 +53,7 @@ async fn main() {
             "--speakers" => speakers = Some(args.next().unwrap().parse().unwrap()),
             "--no-diarize" => diarize = false,
             "--cpu" => cpu = true,
+            "--raw-lid" => raw_lid = true,
             "--out" => out = args.next(),
             _ => wav = Some(a),
         }
@@ -121,11 +123,10 @@ async fn main() {
     let mut engines = BTreeMap::new();
     engines.insert("vi".to_string(), vi_engine);
     engines.insert("en".to_string(), en_engine.clone());
-    let routed = RoutedEngine {
-        lid: lid_model,
-        engines,
-        fallback: en_engine,
-    };
+    let mut routed = RoutedEngine::new(lid_model, engines, en_engine);
+    if raw_lid {
+        routed.policy = almond_stt::langid::LidPolicy::raw();
+    }
     let t_loaded = Instant::now();
 
     #[cfg(feature = "sherpa")]

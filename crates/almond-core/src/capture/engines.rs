@@ -5,6 +5,7 @@
 //! `whisper:large-v3-turbo` for English and language ID); Android = mobile; otherwise desktop CPU.
 //! Without the `whisper`/`sherpa` features no engine can load and callers get `Unsupported`.
 
+use almond_stt::live::{LiveModel, LiveRouter};
 use almond_stt::models::ModelManager;
 use almond_stt::router::{LanguageId, RoutedEngine};
 use almond_stt::routing::{DeviceClass, RoutingTable};
@@ -26,6 +27,7 @@ pub struct SpeechOverride {
 struct Loaded {
     engine: Arc<dyn SttEngine>,
     lid: Option<Arc<dyn LanguageId>>,
+    live: Option<Arc<dyn LiveModel>>,
 }
 
 /// What [`Speech::offline`] chose.
@@ -115,9 +117,11 @@ impl Speech {
                     id,
                     Default::default(),
                 )?);
+                let e = Arc::new(almond_stt::whisper::WhisperEngine::new(m.clone()));
                 Ok(Loaded {
-                    engine: Arc::new(almond_stt::whisper::WhisperEngine::new(m.clone())),
+                    engine: e.clone(),
                     lid: Some(m),
+                    live: Some(e),
                 })
             }
             #[cfg(feature = "sherpa")]
@@ -127,9 +131,11 @@ impl Speech {
                     id,
                     Default::default(),
                 )?);
+                let e = Arc::new(almond_stt::sherpa::SherpaEngine::new(m));
                 Ok(Loaded {
-                    engine: Arc::new(almond_stt::sherpa::SherpaEngine::new(m)),
+                    engine: e.clone(),
                     lid: None,
+                    live: Some(e),
                 })
             }
             other => Err(Error::Unsupported(format!(
@@ -152,28 +158,71 @@ impl Speech {
         *self.diarizer.lock().unwrap_or_else(|p| p.into_inner()) = None;
     }
 
-    /// Engine for live captions in `lang`. Blocking (loads the model on first use).
-    pub fn live(&self, lang: &LangTag) -> Result<Arc<dyn SttEngine>> {
+    /// Engine for live captions in `languages` (primary first). Blocking (loads models on first
+    /// use).
+    ///
+    /// With several languages and a language-ID model this is an
+    /// [`almond_stt::live::LiveRouter`]: partials from the live model of the previous final's
+    /// language, every final re-decoded by the offline model of each part's language (language
+    /// decided per pause-separated part of the segment). Otherwise the primary language's live
+    /// model, or any live-capable model if that one is missing.
+    pub fn live(&self, languages: &[LangTag]) -> Result<Arc<dyn SttEngine>> {
         if let Some(o) = self.override_() {
             return Ok(o.live);
         }
+        let primary = languages.first().cloned().unwrap_or_else(default_language);
         let t = self.table();
-        let want = t.route(Some(lang)).live.clone();
-        match self.load(&want) {
-            Ok(l) => Ok(l.engine),
-            Err(e) => {
-                // Any other live-capable model is better than no captions.
-                for id in t.model_ids() {
-                    if id != want
-                        && let Ok(l) = self.load(&id)
-                    {
-                        tracing::warn!("live captions: {want} unavailable ({e}); using {id}");
-                        return Ok(l.engine);
+        let lid = self
+            .load(&t.fallback.offline)
+            .ok()
+            .and_then(|l| l.lid.clone());
+        let mut partial: BTreeMap<String, Arc<dyn LiveModel>> = BTreeMap::new();
+        let mut finals: BTreeMap<String, Arc<dyn LiveModel>> = BTreeMap::new();
+        let mut langs = vec![];
+        for l in languages {
+            let r = t.route(Some(l));
+            let Some(p) = self.load(&r.live).ok().and_then(|x| x.live) else {
+                tracing::warn!("live captions: {} for {} unavailable", r.live, l.0);
+                continue;
+            };
+            partial.insert(l.primary(), p);
+            if let Some(f) = self.load(&r.offline).ok().and_then(|x| x.live) {
+                finals.insert(l.primary(), f);
+            }
+            langs.push(LangTag(l.primary()));
+        }
+        if langs.first().map(|l| l.primary()) == Some(primary.primary()) {
+            return Ok(Arc::new(LiveRouter {
+                lid: if langs.len() > 1 { lid } else { None },
+                langs,
+                partial,
+                finals,
+                policy: Default::default(),
+                // Partials follow the language of the previous final; language ID per partial
+                // decode made Vietnamese worse (17.9 % vs 13.4 % WER on the mixed test
+                // conversation, eval/stt/RESULTS.md) and costs an encoder pass per step.
+                lid_partials: false,
+                stream: Default::default(),
+            }));
+        }
+        // The primary language's live model is missing: any live-capable model is better
+        // than no captions.
+        let want = t.route(Some(&primary)).live.clone();
+        let mut first_err = None;
+        for id in std::iter::once(want.clone()).chain(t.model_ids()) {
+            match self.load(&id) {
+                Ok(l) => {
+                    if id != want {
+                        tracing::warn!("live captions: {want} unavailable; using {id}");
                     }
+                    return Ok(l.engine);
                 }
-                Err(e)
+                Err(e) => {
+                    first_err.get_or_insert(e);
+                }
             }
         }
+        Err(first_err.unwrap_or_else(|| Error::NotFound("no live caption model".into())))
     }
 
     /// Routed offline engine for `languages` (language ID per utterance when several are
@@ -243,11 +292,7 @@ impl Speech {
             }
         };
         Ok(OfflineSetup {
-            engine: Arc::new(RoutedEngine {
-                lid,
-                engines,
-                fallback: fallback_engine,
-            }),
+            engine: Arc::new(RoutedEngine::new(lid, engines, fallback_engine)),
             opts,
             models: names.join(","),
         })
