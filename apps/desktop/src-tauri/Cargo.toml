@@ -23,3 +23,12 @@ tauri-plugin-opener = "2"
 serde = { workspace = true }
 serde_json = { workspace = true }
 almond-types = { path = "../../../crates/almond-types" }
+almond-core = { path = "../../../crates/almond-core" }
+tokio = { version = "1.54.1", features = ["sync"] }
+
+[features]
+default = []
+# Native speech engines; build the app with `--features whisper,sherpa` (or `cuda`) for real transcription.
+whisper = ["almond-core/whisper"]
+sherpa = ["almond-core/sherpa"]
+cuda = ["almond-core/cuda"]

@@ -159,19 +159,36 @@ dependencies = [
 name = "almond-core"
 version = "0.1.0"
 dependencies = [
+ "almond-audio",
+ "almond-calendar",
+ "almond-llm",
+ "almond-mail",
+ "almond-pipeline",
+ "almond-store",
+ "almond-stt",
+ "almond-sync",
  "almond-types",
+ "almond-verify",
+ "async-trait",
+ "futures",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tracing",
 ]
 
 [[package]]
 name = "almond-desktop"
 version = "0.1.0"
 dependencies = [
+ "almond-core",
  "almond-types",
  "serde",
  "serde_json",
  "tauri",
  "tauri-build",
  "tauri-plugin-opener",
+ "tokio",
 ]
 
 [[package]]

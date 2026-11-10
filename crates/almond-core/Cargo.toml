@@ -6,3 +6,29 @@ license.workspace = true
 
 [dependencies]
 almond-types = { path = "../almond-types" }
+almond-store = { path = "../almond-store" }
+almond-sync = { path = "../almond-sync" }
+almond-pipeline = { path = "../almond-pipeline" }
+almond-llm = { path = "../almond-llm" }
+almond-audio = { path = "../almond-audio" }
+almond-stt = { path = "../almond-stt" }
+almond-calendar = { path = "../almond-calendar" }
+almond-mail = { path = "../almond-mail" }
+almond-verify = { path = "../almond-verify" }
+async-trait = "0.1.92"
+futures = "0.3.34"
+serde = { workspace = true }
+serde_json = { workspace = true }
+tokio = { version = "1.54.1", features = ["rt-multi-thread", "macros", "sync", "time", "fs"] }
+tracing = "0.1"
+
+[features]
+default = []
+# Native speech engines (see crates/almond-stt). The desktop app enables these; CI builds without.
+whisper = ["almond-stt/whisper"]
+sherpa = ["almond-stt/sherpa"]
+cuda = ["almond-stt/cuda"]
+
+[dev-dependencies]
+almond-types = { path = "../almond-types", features = ["mock"] }
+tokio = { version = "1.54.1", features = ["rt-multi-thread", "macros", "sync", "time", "fs"] }
