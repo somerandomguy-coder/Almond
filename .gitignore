@@ -24,3 +24,5 @@ client_secret*.json
 
 # agent worktrees
 .claude/worktrees/
+# ...except small synthetic test fixtures
+!crates/*/tests/fixtures/**
