@@ -967,8 +967,10 @@ impl Source for FfmpegSource {
             self.samples.clear();
             self.samples.extend(
                 self.carry[..whole]
-                    .chunks_exact(4)
-                    .map(|b| f32::from_le_bytes([b[0], b[1], b[2], b[3]])),
+                    .as_chunks::<4>()
+                    .0
+                    .iter()
+                    .map(|b| f32::from_le_bytes(*b)),
             );
             self.carry.drain(..whole);
             return Ok(Some((PIPELINE_SAMPLE_RATE, &self.samples)));
