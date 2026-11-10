@@ -156,6 +156,11 @@ export const Icon = {
       <path d="M5 11a7 7 0 0 0 14 0M12 18v3" />
     </svg>
   ),
+  trash: (p: SVGProps<SVGSVGElement>) => (
+    <svg {...base(p)}>
+      <path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3" />
+    </svg>
+  ),
   stop: (p: SVGProps<SVGSVGElement>) => (
     <svg {...base(p)}>
       <rect x="6" y="6" width="12" height="12" rx="2" fill="currentColor" />

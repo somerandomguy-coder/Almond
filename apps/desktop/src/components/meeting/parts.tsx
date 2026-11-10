@@ -150,7 +150,7 @@ export function JobsList({ jobs }: { jobs: JobProgress[] }) {
           <li key={j.job.id} className="text-sm">
             <div className="mb-1 flex items-center gap-2">
               <code className="text-xs">{j.job.processor}</code>
-              <span className="truncate text-xs text-faint">{j.message}</span>
+              <span className="min-w-0 text-xs break-words text-faint">{j.message}</span>
               <span className={cx("ml-auto text-xs", j.status === "failed" ? "text-bad" : "text-muted")}>{t(`meeting.jobs.${j.status}`)}</span>
             </div>
             <Progress value={j.progress} label={j.job.processor} />
