@@ -1,45 +1,53 @@
-# Almond — Progress (paused 2026-11-09)
+# Almond — Progress (updated 2026-11-10)
 
-Plan: [PLAN.md](PLAN.md). Phase 0 is done (tag `m0-contracts`). Phase 1 was running as 7 parallel
-agents; they were **stopped** at the user's request. Every workstream's work — finished milestones
-*and* in-progress files — is pushed to its `ws/*` branch. Commits titled `wip(...)` were saved
-mid-task and may not build or pass tests yet.
+Plan: [PLAN.md](PLAN.md). **Phase 0** (contracts, tag `m0-contracts`) and **Phase 1** (7 parallel
+workstreams, tag `m1-workstreams`) are done and merged into `main`. The batched contract changes are
+on `main` too ([contract-requests/RESOLVED.md](contract-requests/RESOLVED.md)).
+**Next: Phase 2, integration** — the parts work on their own but are not wired into the app yet;
+the desktop UI still runs on its mock API.
 
-## Status by workstream
+## Phase 1 — what each part does (all on `main`)
 
-| WS | Branch | Done (committed by the agent) | Unfinished (in the `wip` commit) | Verified |
-|---|---|---|---|---|
-| A Audio | `ws/a-audio` | A1 cpal / WASAPI loopback / Pulse-monitor capture, push + WAV sources; A2 clock-aligned resampling, VAD; A3 crash-safe chunked Ogg Opus / WAV recorder, merge + recovery, multi-channel `CaptureSession` | A4 echo cancellation (`echo.rs`), `record` example | Not checked by the integrator; no real-hardware run confirmed |
-| B STT | `ws/b-stt` | — (nothing committed before the stop) | whisper + sherpa engines, model registry (`models.json`), language routing, streaming, metrics, `eval/stt` harness | Not checked; no WER numbers yet |
-| C LLM / pipeline | `ws/c-llm` | C1 Ollama provider; C2 vi/en prompt templates + cited tasks; C3 registry, DAG planner, replicated job runner; C4 external JSON-RPC processors (stdio + HTTP) | C5 `eval/summary` dataset (partial), no RESULTS.md yet | Not checked by the integrator |
-| D Store / sync | `ws/d-sync` | D1+D2 SQLite event log, LWW views, FTS5 Vietnamese folding, BLAKE3 blobs, Loro notes; D3–D5 identity, pairing, iroh LAN transport, replication protocol, `sync_now` | Agent had a long test/build still running (likely the real-iroh multi-process test) — unknown result | Not checked by the integrator |
-| E Calendar / mail | `ws/e-calendar` | **Complete** E1–E5 + `docs/google-setup.md` (EN + VI). PR [#1](https://github.com/somerandomguy-coder/Almond/pull/1) open | — | ✅ Scope check clean (only its own dirs); 38 tests pass (2 need a real Google account, `#[ignore]`). All Google traffic is mocked; no real sign-in yet |
-| F UI | `ws/f-ui` | — (nothing committed before the stop) | App shell, mock API, screens (home, meeting, sync, settings), citations, notes editor, i18n, vitest tests | Not checked; agent was about to start the dev server |
-| G Android | — | Not started | — | Blocked: no Java / Android SDK / NDK on the PC |
-| H Verify | `ws/h-verify` | H1–H3 verifier registry, processor adapters, aggregation, claim extraction, baseline verifiers | H4 parser fixes, hallucination fixtures (`tests/hallucinations.rs`, `eval/`), examples; H5 ADR not written | Not checked by the integrator |
+| WS | Crate(s) | State | Verified |
+|---|---|---|---|
+| A Audio | `almond-audio` | Mic + WASAPI loopback (Windows), Pulse monitor (Linux), aligned 16 kHz pipeline, VAD, crash-safe chunked Ogg Opus recorder | Real capture on the PC; Linux not run locally. Echo cancellation (AEC3) not done |
+| B STT | `almond-stt` | whisper.cpp (CPU / CUDA) + sherpa-onnx engines, model manager, language routing, live captions, diarization | 30-min VI/EN meeting: WER 7.7 %, LID 100 %, speakers 92 %; **5.6 min on the PC GPU** (RTF 0.19). See `eval/stt/RESULTS.md` |
+| C LLM / pipeline | `almond-llm`, `almond-pipeline` | Ollama provider, VI/EN prompts, cited summary / enhanced notes / action items / title, replicated job runner (offload phone → PC), external JSON-RPC processors | Real Ollama: `gemma4:12b` coverage ≥ 0.97, citations ≥ 0.97 valid. See `eval/summary/` |
+| D Store / sync | `almond-store`, `almond-sync` | SQLite event log + views, FTS5 with Vietnamese folding, BLAKE3 blobs, Loro notes, identity + pairing, iroh LAN transport, on-demand `sync_now` | Real 3-process iroh LAN test passes |
+| E Calendar / mail | `almond-calendar`, `almond-mail` | Google OAuth (PKCE, multi-account), Google/ICS/phone calendars, reminders, Gmail context (read-only) | Mocked Google only — **no real sign-in yet** |
+| F UI | `apps/desktop/src` | Home, meeting view (citations, verdicts, notes editor), devices & sync, settings, VI/EN | Runs on the mock API (`?mock=1`) |
+| G Android | — | Not started | **Blocked**: needs Android NDK, cmdline-tools, JDK |
+| H Verify | `almond-verify` | Claim extraction, rule-based verifiers, LLM judge, Datalog consistency, aggregation | Held-out set: P/R 1.00/1.00 with `gemma4:12b` (small, self-made set) |
 
-## Open contract requests (to batch into `almond-types` before integration)
+Tests: 282 Rust + 18 UI pass; clippy `-D warnings` clean.
 
-- `docs/contract-requests/ws-e.md` (on `ws/e-calendar`): `keys::GOOGLE_ACCOUNTS`; `calendar.addGoogle { gmail?, login_hint? }`;
-  `CalendarDelta::reset_calendars`; settings entry for the user's Google OAuth client id/secret;
-  `DeviceInfo::last_active`.
-- Other workstreams may have added `docs/contract-requests/ws-*.md` on their branches — check when resuming.
+## Defaults chosen from the evals (PC)
 
-## Known issues to fix during integration
+- Summaries + fact-check judge: `gemma4:12b` (Fedora laptop: `qwen3.5:4b`, or leave jobs for the PC).
+- Vietnamese STT: `sherpa:zipformer-vi-30m-int8` (PhoWhisper via whisper.cpp emits a junk first word
+  and broken timestamps). English + language ID: `whisper:large-v3-turbo` on the GPU.
 
-- WS-E: all-day Google events are anchored at UTC midnight; deleted events can linger after a 410 full
-  resync until `reset_calendars` exists.
-- Mock `MemStore` advances the version vector without checking for gaps (the real store must not).
+## Environment notes (dev PC)
 
-## How to resume
+- Ollama: the Windows one (0.40.13) on port 11434. The WSL Ollama is stopped and disabled.
+- LLVM 23.1.5 and VS 2022 Build Tools installed; CUDA whisper builds with
+  `crates\almond-stt\scripts\cargo-cuda.cmd` (target dir `%USERPROFILE%\.almond\t`).
+- Models in `%USERPROFILE%\.almond\models`; eval data in `%USERPROFILE%\.almond\eval` (not committed).
 
-1. For each `wip` branch: check out the worktree (or the branch), run that crate's fmt/clippy/tests, fix,
-   then finish the remaining milestones listed in PLAN.md. Each agent can be restarted with the same
-   brief plus: "continue from branch `ws/<x>`; the last commit is WIP from a paused session".
-2. When each workstream is green, open its PR. Review it for ownership (only its own dirs) and run its tests.
-3. Batch the contract requests into one `almond-types` PR on `main`, then rebase the `ws/*` branches.
-4. Phase 2 integration (`almond-core` + Tauri commands), per PLAN.md.
-5. Install Android Studio (SDK + NDK, JDK) to unblock WS-G.
+## Phase 2 — to do
 
-Local worktrees live in `.claude/worktrees/agent-*` (one per workstream) and can be reused or removed —
-everything is on GitHub.
+1. `almond-core` facade: own the store, sync, pipeline, audio, STT, LLM, calendar, verify; JSON-RPC.
+2. Tauri commands per docs/API.md; switch the UI from the mock to the real API.
+3. End to end on the PC: record a Meet call → live captions → stop → transcript → summary, notes,
+   action items, fact-check → shown in the app.
+4. Sync PC ↔ Fedora laptop; Google sign-in with the user's own OAuth client.
+5. Speed: run diarization concurrently with transcription (it is ~80 % of post-meeting time).
+6. Follow-ups listed in [RESOLVED.md](contract-requests/RESOLVED.md#phase-2-integration-work-that-these-unlock).
+
+## Known issues
+
+- All-day Google events are anchored at UTC midnight.
+- Echo cancellation not done (needs meson, ninja, clang for webrtc AEC3).
+- The HDMI audio endpoint drops out when the display sleeps.
+- Linux and Android builds not verified locally.
+- UI bundle has a 4.9 MB chunk (base64 fixtures) — split before release.
