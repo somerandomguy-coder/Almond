@@ -75,11 +75,15 @@ impl CoreConfig {
             ollama_url: std::env::var("OLLAMA_HOST")
                 .ok()
                 .map(|h| {
-                    if h.starts_with("http") {
+                    let h = if h.starts_with("http") {
                         h
                     } else {
                         format!("http://{h}")
-                    }
+                    };
+                    // OLLAMA_HOST is often the server's *bind* address (0.0.0.0 / [::]); a client
+                    // must dial loopback instead.
+                    h.replace("://0.0.0.0", "://127.0.0.1")
+                        .replace("://[::]", "://[::1]")
                 })
                 .unwrap_or_else(|| "http://127.0.0.1:11434".into()),
             network: true,

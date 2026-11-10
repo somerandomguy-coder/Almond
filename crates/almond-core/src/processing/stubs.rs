@@ -4,7 +4,8 @@
 //! TODO(integrator): when merging, replace each body with a call to the provider:
 //! - `speech_models` -> `crate::capture::speech_models(core)`
 //! - `download_speech_model` -> `crate::capture::download_speech_model(core, id).await`
-//! - `notes_text` -> `crate::library::notes_text(core, doc)`
+//!
+//! `notes_text` is already wired to `crate::library::notes_text`.
 
 use crate::Core;
 use almond_types::api::ModelEntry;
@@ -26,7 +27,6 @@ pub(crate) async fn download_speech_model(_core: &Arc<Core>, id: &str) -> Result
 }
 
 /// Plain text of a meeting's Loro notes doc.
-pub(crate) fn notes_text(_core: &Core, _doc: &Id) -> Result<String> {
-    // TODO(library): crate::library::notes_text(core, doc)
-    Ok(String::new())
+pub(crate) fn notes_text(core: &Core, doc: &Id) -> Result<String> {
+    crate::library::notes_text(core, doc)
 }
