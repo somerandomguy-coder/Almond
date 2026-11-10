@@ -68,6 +68,7 @@ function Calendars() {
   const [busy, setBusy] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [ics, setIcs] = useState("");
+  const [gmail, setGmail] = useState(false);
 
   const act = async (key: string, fn: () => Promise<unknown>) => {
     setBusy(key);
@@ -118,10 +119,14 @@ function Calendars() {
           </ul>
         )}
         <div className="flex flex-wrap gap-2">
-          <Button onClick={() => act("google", () => api.call("calendar.addGoogle", {}))} disabled={busy === "google"}>
+          <Button onClick={() => act("google", () => api.call("calendar.addGoogle", { gmail }))} disabled={busy === "google"}>
             {busy === "google" ? <Spinner /> : <Icon.plus width={16} height={16} />}
             {busy === "google" ? t("settings.addingGoogle") : t("settings.addGoogle")}
           </Button>
+          <label className="flex items-center gap-2 text-sm text-muted">
+            <input type="checkbox" checked={gmail} onChange={(e) => setGmail(e.target.checked)} />
+            {t("settings.gmailToo")}
+          </label>
           {platform === "android" && (
             <Button onClick={() => act("phone", () => api.call("calendar.importPhone", {}))} disabled={busy === "phone"}>
               <Icon.phone width={16} height={16} />
@@ -148,6 +153,105 @@ function Calendars() {
           </div>
         </form>
         {err && <p className="text-sm text-bad">{err}</p>}
+        <GoogleClient />
+      </Card>
+    </section>
+  );
+}
+
+/** Setting `google.oauth_client`: the user's own Desktop OAuth client (docs/google-setup.md). */
+function GoogleClient() {
+  const { t } = useTranslation();
+  const api = useApi();
+  const [id, setId] = useState("");
+  const [secret, setSecret] = useState("");
+  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  useEffect(() => {
+    void api
+      .call("settings.get", { key: "google.oauth_client" })
+      .then((v) => {
+        if (v && typeof v === "object" && !Array.isArray(v)) {
+          const o = v as Record<string, unknown>;
+          if (typeof o.client_id === "string") setId(o.client_id);
+          if (typeof o.client_secret === "string") setSecret(o.client_secret);
+        }
+      })
+      .catch(() => {});
+  }, [api]);
+  const submit = (e: FormEvent) => {
+    e.preventDefault();
+    setMsg(null);
+    const value = id.trim() ? { client_id: id.trim(), client_secret: secret.trim() || null } : null;
+    void api
+      .call("settings.set", { key: "google.oauth_client", value })
+      .then(() => setMsg({ ok: true, text: t("settings.saved") }))
+      .catch((err) => setMsg({ ok: false, text: errorMessage(err) }));
+  };
+  return (
+    <details className="text-sm">
+      <summary className="cursor-pointer text-muted">{t("settings.googleClient")}</summary>
+      <form onSubmit={submit} className="mt-2 flex flex-col gap-2">
+        <p className="text-xs text-muted">{t("settings.googleClientHint")}</p>
+        <input
+          value={id}
+          onChange={(e) => setId(e.target.value)}
+          placeholder="1234-abc.apps.googleusercontent.com"
+          aria-label={t("settings.clientId")}
+          autoComplete="off"
+          spellCheck={false}
+          className="min-w-0 rounded-full border border-line bg-surface px-4 py-2 font-mono text-sm outline-none focus:border-accent"
+        />
+        <input
+          value={secret}
+          onChange={(e) => setSecret(e.target.value)}
+          type="password"
+          placeholder={t("settings.clientSecret")}
+          aria-label={t("settings.clientSecret")}
+          autoComplete="off"
+          className="min-w-0 rounded-full border border-line bg-surface px-4 py-2 font-mono text-sm outline-none focus:border-accent"
+        />
+        <div className="flex items-center gap-3">
+          <Button type="submit">{t("app.save")}</Button>
+          {msg && (
+            <span role="status" className={cx("text-sm", msg.ok ? "text-ok" : "text-bad")}>
+              {msg.text}
+            </span>
+          )}
+        </div>
+      </form>
+    </details>
+  );
+}
+
+function Storage() {
+  const { t } = useTranslation();
+  const api = useApi();
+  const usage = useLoad(() => api.call("storage.usage", {}), [api]);
+  const rows: [string, number][] = usage.data
+    ? [
+        [t("settings.storageDb"), usage.data.db_bytes],
+        [t("settings.storageAudio"), usage.data.audio_bytes],
+        [t("settings.storageBlobs"), usage.data.blobs_bytes],
+        [t("settings.storageModels"), usage.data.models_bytes],
+      ]
+    : [];
+  return (
+    <section>
+      <SectionTitle>{t("settings.storage")}</SectionTitle>
+      <Card className="flex flex-col gap-2 text-sm">
+        <p className="text-muted">{t("settings.storageHint")}</p>
+        {usage.error ? (
+          <ErrorNote error={usage.error} onRetry={usage.reload} />
+        ) : (
+          <dl className="grid grid-cols-2 gap-x-6 gap-y-1">
+            {rows.map(([k, v]) => (
+              <div key={k} className="contents">
+                <dt className="text-muted">{k}</dt>
+                <dd className="text-right font-mono">{formatBytes(v)}</dd>
+              </div>
+            ))}
+          </dl>
+        )}
       </Card>
     </section>
   );
@@ -290,10 +394,7 @@ export function Settings() {
       <Calendars />
       <Reminders />
       <Models />
-      <section>
-        <SectionTitle>{t("settings.storage")}</SectionTitle>
-        <Card className="text-sm text-muted">{t("settings.storageHint")}</Card>
-      </section>
+      <Storage />
       <section>
         <SectionTitle>{t("settings.about")}</SectionTitle>
         <p className="text-sm text-muted">{t("settings.backend", { kind: api.kind, platform: platform || "…" })}</p>

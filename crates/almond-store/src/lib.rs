@@ -29,7 +29,7 @@ pub mod sqlite;
 
 pub use almond_types as types;
 pub use blobs::FsBlobStore;
-pub use notes::{export_since, notes_update_event};
+pub use notes::{doc_text, export_since, notes_update_event, validate_update};
 pub use sqlite::{BlobInfo, SqliteStore};
 
 #[cfg(test)]

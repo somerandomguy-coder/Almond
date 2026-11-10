@@ -78,8 +78,15 @@ impl SyncNode {
         let blobs = Arc::new(FsBlobStore::open(cfg.data_dir.join("blobs"))?);
 
         // announce (changes to) this device to the vault
+        // (`last_active` is re-announced separately while the app is in use; ignore it here)
         let known = store.devices()?.into_iter().find(|d| d.id == device.id);
-        if known.as_ref() != Some(&device) {
+        let same = known.as_ref().is_some_and(|k| {
+            DeviceInfo {
+                last_active: None,
+                ..k.clone()
+            } == device
+        });
+        if !same {
             store.append_local(EventBody::DeviceInfo(device.clone()))?;
         }
 

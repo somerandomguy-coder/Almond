@@ -14,10 +14,14 @@ const NAV = [
   { to: "/settings", key: "nav.settings", icon: Icon.settings, end: false },
 ] as const;
 
-/** Runs `sync.now` periodically while the app is open, if the user enabled it. */
+/**
+ * Mock only: runs `sync.now` periodically while the app is open, if the user enabled it. The real
+ * core runs this loop itself (setting `sync.auto_while_open`), so the UI must not double it.
+ */
 function useAutoSync() {
   const api = useApi();
   useEffect(() => {
+    if (api.kind !== "mock") return;
     let timer: ReturnType<typeof setInterval> | null = null;
     let alive = true;
     const tick = async () => {

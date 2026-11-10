@@ -99,7 +99,7 @@ impl SecretStore for FileSecretStore {
     }
 }
 
-/// OS keychain (Windows Credential Manager, macOS Keychain). Service name `almond`.
+/// OS keychain (Windows Credential Manager, macOS Keychain) under one service name.
 #[cfg(any(windows, target_os = "macos"))]
 pub struct KeyringSecretStore {
     service: String,
@@ -177,12 +177,21 @@ impl SecretStore for FallbackSecretStore {
 }
 
 /// Platform default: OS keychain with file fallback on Windows/macOS; file elsewhere.
+///
+/// The keychain entries are scoped to `data_dir` (service `almond-<hash of the dir>`), so two
+/// data directories on one machine (dev and release builds, two cores in one test process) never
+/// share a device identity or Google tokens. Data directories under the system temp dir (tests),
+/// or any directory when `ALMOND_SECRETS=file`, use only the file store and leave the OS keychain
+/// untouched.
 pub fn default_secret_store(data_dir: &Path) -> Arc<dyn SecretStore> {
     let file: Arc<dyn SecretStore> = Arc::new(FileSecretStore::new(data_dir.join("secrets.json")));
+    if file_only(data_dir) {
+        return file;
+    }
     #[cfg(any(windows, target_os = "macos"))]
     {
         Arc::new(FallbackSecretStore::new(
-            Arc::new(KeyringSecretStore::new("almond")),
+            Arc::new(KeyringSecretStore::new(keyring_service(data_dir))),
             file,
         ))
     }
@@ -192,9 +201,43 @@ pub fn default_secret_store(data_dir: &Path) -> Arc<dyn SecretStore> {
     }
 }
 
+fn absolute(p: &Path) -> PathBuf {
+    std::path::absolute(p).unwrap_or_else(|_| p.to_path_buf())
+}
+
+/// Ephemeral (temp) data dirs and `ALMOND_SECRETS=file` keep secrets in the file only.
+fn file_only(data_dir: &Path) -> bool {
+    if std::env::var("ALMOND_SECRETS").is_ok_and(|v| v.eq_ignore_ascii_case("file")) {
+        return true;
+    }
+    absolute(data_dir).starts_with(absolute(&std::env::temp_dir()))
+}
+
+/// Keychain service name for a data dir: `almond-<first 16 hex of blake3(absolute path)>`.
+pub fn keyring_service(data_dir: &Path) -> String {
+    let p = absolute(data_dir).to_string_lossy().to_string();
+    // Windows paths are case-insensitive.
+    let p = if cfg!(windows) { p.to_lowercase() } else { p };
+    format!("almond-{}", &blake3::hash(p.as_bytes()).to_hex()[..16])
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn temp_dirs_use_the_file_store_and_services_are_scoped() {
+        let dir = tempfile::tempdir().unwrap();
+        assert!(file_only(dir.path()));
+        let s = default_secret_store(dir.path());
+        s.set("k", b"v").unwrap();
+        assert!(dir.path().join("secrets.json").exists());
+        assert_ne!(
+            keyring_service(Path::new("/a/almond")),
+            keyring_service(Path::new("/b/almond"))
+        );
+        assert!(keyring_service(Path::new("/a")).starts_with("almond-"));
+    }
 
     #[test]
     fn file_store_roundtrip() {

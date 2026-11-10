@@ -170,11 +170,17 @@ dependencies = [
  "almond-types",
  "almond-verify",
  "async-trait",
+ "base64 0.22.1",
+ "chrono",
  "futures",
+ "iana-time-zone",
+ "loro",
  "serde",
  "serde_json",
  "tokio",
  "tracing",
+ "url",
+ "wiremock",
 ]
 
 [[package]]

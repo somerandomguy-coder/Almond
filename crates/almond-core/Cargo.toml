@@ -21,6 +21,8 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 tokio = { version = "1.54.1", features = ["rt-multi-thread", "macros", "sync", "time", "fs"] }
 tracing = "0.1"
+base64 = "0.22"
+iana-time-zone = "0.1.65"
 
 [features]
 default = []
@@ -32,3 +34,7 @@ cuda = ["almond-stt/cuda"]
 [dev-dependencies]
 almond-types = { path = "../almond-types", features = ["mock"] }
 tokio = { version = "1.54.1", features = ["rt-multi-thread", "macros", "sync", "time", "fs"] }
+loro = "=1.17.1"
+chrono = "0.4.45"
+wiremock = "0.6.5"
+url = "2.5.8"

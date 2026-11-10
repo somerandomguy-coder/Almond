@@ -57,7 +57,7 @@ export interface ApiMethods {
   "notes.applyUpdate": [{ doc: Id; update_b64: string }, null];
   "search.query": [{ text: string; limit?: number }, SearchHit[]];
   "calendar.sources": [Record<string, never>, CalendarSourcesResult];
-  "calendar.addGoogle": [Record<string, never>, CalendarSourceInfo];
+  "calendar.addGoogle": [{ gmail?: boolean; login_hint?: string }, CalendarSourceInfo];
   "calendar.addIcs": [{ url: string; label?: string }, CalendarSourceInfo];
   "calendar.importPhone": [Record<string, never>, CalendarSourceInfo];
   "calendar.remove": [{ source: string }, null];
@@ -76,14 +76,23 @@ export interface ApiMethods {
   "sync.status": [Record<string, never>, SyncStatus];
   "sync.now": [{ peers?: DeviceId[] }, SyncReport[]];
   "sync.pairBegin": [Record<string, never>, PairBeginResult];
-  "sync.pairAccept": [{ qr_payload?: string; words?: string[] }, PeerInfo];
+  "sync.pairAccept": [{ qr_payload?: string; words?: string[]; device?: DeviceId }, PeerInfo];
   "sync.unpair": [{ device: DeviceId }, null];
-  "sync.addAddr": [{ addr: string }, null];
+  "sync.addAddr": [{ device: DeviceId; addr: string }, null];
   "models.list": [Record<string, never>, ModelEntry[]];
   "models.download": [{ id: string }, Job];
   "models.select": [ModelSlot, null];
+  "storage.usage": [Record<string, never>, StorageUsage];
   "settings.get": [{ key: string }, JsonValue];
   "settings.set": [{ key: string; value: JsonValue }, null];
+}
+
+/** `storage.usage`: bytes on this device. `audio_bytes` is the audio part of `blobs_bytes`. */
+export interface StorageUsage {
+  db_bytes: number;
+  blobs_bytes: number;
+  models_bytes: number;
+  audio_bytes: number;
 }
 
 export type Method = keyof ApiMethods;
@@ -118,6 +127,7 @@ export const SettingKeys = {
   theme: "ui.theme",
   reminderLeadMin: "calendar.reminder_lead_min",
   autoSyncWhileOpen: "sync.auto_while_open",
+  googleOAuthClient: "google.oauth_client",
 } as const;
 
 /** Well-known artifact kinds (mirror of `ArtifactKind` consts in almond-types). */

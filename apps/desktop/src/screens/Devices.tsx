@@ -18,7 +18,7 @@ function phaseValue(p: SyncProgress): number {
   return p.phase === "events" ? 0.1 + 0.6 * frac : 0.7 + 0.3 * frac;
 }
 
-function PairingCode() {
+function PairingCode({ onPaired }: { onPaired: () => void }) {
   const { t } = useTranslation();
   const api = useApi();
   const [res, setRes] = useState<PairBeginResult | null>(null);
@@ -31,6 +31,23 @@ function PairingCode() {
     const tm = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(tm);
   }, [res]);
+
+  // While the code is shown, notice when the other device has paired with us.
+  useEffect(() => {
+    if (!res) return;
+    let known: number | null = null;
+    const tm = setInterval(() => {
+      void api
+        .call("sync.status", {})
+        .then((st) => {
+          const n = st.peers.filter((p) => p.paired).length;
+          if (known != null && n > known) onPaired();
+          known = n;
+        })
+        .catch(() => {});
+    }, 3000);
+    return () => clearInterval(tm);
+  }, [api, res, onPaired]);
 
   const begin = async () => {
     setErr(null);
@@ -144,6 +161,8 @@ export function Devices() {
   const [err, setErr] = useState<string | null>(null);
   const [auto, setAuto] = useState<boolean | null>(null);
   const [addr, setAddr] = useState("");
+  const [addrDevice, setAddrDevice] = useState("");
+  const [addrMsg, setAddrMsg] = useState<{ ok: boolean; text: string } | null>(null);
 
   useNotification("sync.progress", (p) => setProgress((m) => ({ ...m, [p.peer]: p })));
   useEffect(() => {
@@ -217,7 +236,10 @@ export function Devices() {
           <div className="min-w-0 flex-1">
             <p className="font-medium">{s.this_device.name}</p>
             <p className="text-xs text-muted">
-              {t(`devices.platform.${s.this_device.platform}`, { defaultValue: s.this_device.platform })} · v{s.this_device.app_version} · <code>{s.this_device.id.slice(0, 16)}</code>
+              {t(`devices.platform.${s.this_device.platform}`, { defaultValue: s.this_device.platform })} · v{s.this_device.app_version}
+            </p>
+            <p className="text-xs text-muted">
+              {t("devices.deviceId")}: <code className="select-all break-all" data-testid="this-device-id">{s.this_device.id}</code>
             </p>
             <div className="mt-2 flex flex-wrap gap-1" aria-label={t("devices.capabilities")}>
               {s.this_device.capabilities.map((c) => (
@@ -283,27 +305,53 @@ export function Devices() {
       <section>
         <SectionTitle>{t("devices.pair")}</SectionTitle>
         <div className="grid gap-3 lg:grid-cols-2">
-          <PairingCode />
+          <PairingCode onPaired={status.reload} />
           <EnterCode onPaired={() => void status.reload()} />
         </div>
         <details className="mt-3 text-sm">
           <summary className="cursor-pointer text-muted">{t("devices.addAddr")}</summary>
+          <p className="mt-2 text-xs text-muted">{t("devices.addrHint")}</p>
           <form
-            className="mt-2 flex gap-2"
+            className="mt-2 flex flex-col gap-2 sm:flex-row"
             onSubmit={(e) => {
               e.preventDefault();
-              if (addr.trim()) void api.call("sync.addAddr", { addr: addr.trim() }).then(() => setAddr(""));
+              if (!addr.trim() || !addrDevice.trim()) return;
+              setAddrMsg(null);
+              void api
+                .call("sync.addAddr", { device: addrDevice.trim(), addr: addr.trim() })
+                .then(() => {
+                  setAddr("");
+                  setAddrMsg({ ok: true, text: t("devices.addrAdded") });
+                  void status.reload();
+                })
+                .catch((err) => setAddrMsg({ ok: false, text: errorMessage(err) }));
             }}
           >
+            <input
+              value={addrDevice}
+              onChange={(e) => setAddrDevice(e.target.value)}
+              placeholder={t("devices.deviceIdPlaceholder")}
+              aria-label={t("devices.deviceId")}
+              autoComplete="off"
+              spellCheck={false}
+              className="min-w-0 flex-1 rounded-full border border-line bg-surface px-4 py-2 font-mono text-sm outline-none focus:border-accent"
+            />
             <input
               value={addr}
               onChange={(e) => setAddr(e.target.value)}
               placeholder={t("devices.addrPlaceholder")}
               aria-label={t("devices.addAddr")}
-              className="min-w-0 flex-1 rounded-full border border-line bg-surface px-4 py-2 font-mono text-sm outline-none focus:border-accent"
+              className="min-w-0 rounded-full border border-line bg-surface px-4 py-2 font-mono text-sm outline-none focus:border-accent sm:w-56"
             />
-            <Button type="submit">{t("app.add")}</Button>
+            <Button type="submit" disabled={!addr.trim() || !addrDevice.trim()}>
+              {t("app.add")}
+            </Button>
           </form>
+          {addrMsg && (
+            <p role="status" className={cx("mt-2 text-sm", addrMsg.ok ? "text-ok" : "text-bad")}>
+              {addrMsg.text}
+            </p>
+          )}
         </details>
       </section>
     </div>

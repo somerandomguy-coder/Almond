@@ -142,6 +142,11 @@ async fn full_then_incremental_then_410() {
         "a changed; t1 from full resync after 410"
     );
     assert_eq!(d2.deletes, vec!["b".to_string()]);
+    // E3: the 410'd calendar is reset so events deleted meanwhile don't linger
+    assert_eq!(
+        d2.reset_calendars,
+        vec!["team@group.calendar.google.com".to_string()]
+    );
     let c2 = d2.next_cursor.unwrap();
     assert!(c2.contains("sync-me-2") && c2.contains("sync-team-1"));
 }

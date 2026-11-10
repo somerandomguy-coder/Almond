@@ -1,4 +1,5 @@
-//! iCalendar (`.ics`) subscriptions: fetch over HTTP(S) (`webcal://` accepted), parse `VEVENT`s,
+//! iCalendar (`.ics`) subscriptions: fetch over HTTP(S) (`webcal://` accepted) or read a local
+//! `file://` URL / plain path (an exported calendar), parse `VEVENT`s,
 //! expand recurrences (`RRULE`/`RDATE`/`EXDATE`, overrides via `RECURRENCE-ID`) inside the
 //! [`SyncWindow`], and emit only what changed since the cursor (see [`crate::snapshot`]).
 //!
@@ -47,7 +48,12 @@ impl IcsSubscription {
         let label = label.unwrap_or_else(|| {
             url::Url::parse(&url)
                 .ok()
-                .and_then(|u| u.host_str().map(str::to_string))
+                .and_then(|u| {
+                    u.host_str()
+                        .filter(|h| !h.is_empty())
+                        .map(str::to_string)
+                        .or_else(|| u.path_segments()?.next_back().map(str::to_string))
+                })
                 .unwrap_or_else(|| "Calendar feed".into())
         });
         Ok(IcsSubscription {
@@ -92,6 +98,13 @@ impl IcsSubscription {
 
 fn normalize_url(url: &str) -> Result<String> {
     let url = url.trim();
+    // a plain local path ("C:\\cal.ics", "/home/me/cal.ics") → file:// URL
+    let path = std::path::Path::new(url);
+    if !url.contains("://") && path.is_absolute() {
+        return url::Url::from_file_path(path)
+            .map(|u| u.to_string())
+            .map_err(|_| Error::Invalid(format!("ics path {url:?}")));
+    }
     let url = if let Some(rest) = url.strip_prefix("webcal://") {
         format!("https://{rest}")
     } else if let Some(rest) = url.strip_prefix("webcals://") {
@@ -100,7 +113,7 @@ fn normalize_url(url: &str) -> Result<String> {
         url.to_string()
     };
     let parsed = url::Url::parse(&url).map_err(|e| Error::Invalid(format!("ics url: {e}")))?;
-    if !matches!(parsed.scheme(), "http" | "https") {
+    if !matches!(parsed.scheme(), "http" | "https" | "file") {
         return Err(Error::Invalid(format!(
             "unsupported ics url scheme: {}",
             parsed.scheme()
@@ -122,6 +135,19 @@ impl CalendarSource for IcsSubscription {
 
     async fn sync(&self, cursor: Option<String>) -> Result<CalendarDelta> {
         let prev = SnapshotCursor::parse(cursor.as_deref());
+        if self.url.starts_with("file:") {
+            let path = url::Url::parse(&self.url)
+                .ok()
+                .and_then(|u| u.to_file_path().ok())
+                .ok_or_else(|| Error::Invalid(format!("ics url {}", self.url)))?;
+            let body = std::fs::read_to_string(&path).map_err(|e| match e.kind() {
+                std::io::ErrorKind::NotFound => {
+                    Error::NotFound(format!("ics file {}", path.display()))
+                }
+                _ => Error::Io(e),
+            })?;
+            return self.delta_from(&prev, &body, None);
+        }
         let mut req = self.http.get(&self.url);
         if let Some(etag) = &prev.etag {
             req = req.header(reqwest::header::IF_NONE_MATCH, etag);
@@ -149,7 +175,18 @@ impl CalendarSource for IcsSubscription {
             .and_then(|v| v.to_str().ok())
             .map(str::to_string);
         let body = resp.text().await.map_err(net_err)?;
-        let cal = parse_calendar(&body)?;
+        self.delta_from(&prev, &body, etag)
+    }
+}
+
+impl IcsSubscription {
+    fn delta_from(
+        &self,
+        prev: &SnapshotCursor,
+        body: &str,
+        etag: Option<String>,
+    ) -> Result<CalendarDelta> {
+        let cal = parse_calendar(body)?;
         let (ws, we) = self.window.bounds((self.clock)());
         let events = cal.expand(
             &self.id,
@@ -159,7 +196,7 @@ impl CalendarSource for IcsSubscription {
             ws,
             we,
         );
-        let (mut delta, mut next) = diff(&prev, events, ws, we);
+        let (mut delta, mut next) = diff(prev, events, ws, we);
         next.etag = etag;
         delta.next_cursor = Some(next.to_json()?);
         Ok(delta)
@@ -871,10 +908,40 @@ END:VCALENDAR\r\n";
     #[test]
     fn rejects_non_ics_and_bad_scheme() {
         assert!(parse_calendar("<html>").is_err());
-        assert!(IcsSubscription::new("file:///etc/passwd", None).is_err());
+        assert!(IcsSubscription::new("ftp://example.com/cal.ics", None).is_err());
+        assert!(IcsSubscription::new("relative/cal.ics", None).is_err());
         let s = IcsSubscription::new("webcal://example.com/cal.ics", None).unwrap();
         assert_eq!(s.url(), "https://example.com/cal.ics");
         assert!(s.info().id.starts_with("ics:"));
         assert_eq!(s.info().label, "example.com");
+    }
+
+    #[tokio::test]
+    async fn reads_local_files() {
+        let dir = std::env::temp_dir().join(format!("almond-ics-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("team.ics");
+        let now = 1_793_000_000_000i64; // 2026-10-26T07:33:20Z
+        std::fs::write(
+            &path,
+            "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VEVENT\r\nUID:u1\r\n\
+             DTSTART:20261027T090000Z\r\nDTEND:20261027T100000Z\r\nSUMMARY:Planning\r\n\
+             END:VEVENT\r\nEND:VCALENDAR\r\n",
+        )
+        .unwrap();
+        // a plain absolute path and the file:// URL name the same source
+        let s = IcsSubscription::new(path.to_str().unwrap(), None)
+            .unwrap()
+            .with_clock(std::sync::Arc::new(move || now));
+        assert!(s.url().starts_with("file:"));
+        assert_eq!(s.info().label, "team.ics");
+        let d = s.sync(None).await.unwrap();
+        assert_eq!(d.upserts.len(), 1);
+        assert_eq!(d.upserts[0].title, "Planning");
+        let d2 = s.sync(d.next_cursor).await.unwrap();
+        assert!(d2.upserts.is_empty() && d2.deletes.is_empty());
+        std::fs::remove_file(&path).unwrap();
+        assert!(matches!(s.sync(None).await, Err(Error::NotFound(_))));
+        let _ = std::fs::remove_dir_all(dir);
     }
 }

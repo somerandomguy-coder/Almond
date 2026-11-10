@@ -49,6 +49,16 @@ describe("devices & sync", () => {
     expect(within(words).getAllByRole("listitem")).toHaveLength(6);
   });
 
+  it("adds a manual address with the other device's id", async () => {
+    const r = renderApp("/devices");
+    api = r.api;
+    await userEvent.click(await screen.findByText("Add address manually"));
+    await userEvent.type(screen.getByLabelText("Device ID"), "dev-fedora");
+    await userEvent.type(screen.getByLabelText("Add address manually"), "192.168.1.20:47321");
+    await userEvent.click(screen.getByRole("button", { name: "Add" }));
+    expect(await screen.findByText("Address saved. Pair or sync now.")).toBeInTheDocument();
+  });
+
   it("auto-sync toggle persists to settings", async () => {
     const r = renderApp("/devices");
     api = r.api;

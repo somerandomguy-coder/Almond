@@ -547,6 +547,43 @@ impl SqliteStore {
             .sql()
     }
 
+    /// One calendar event by `(source, event_id)`, `None` if unknown or deleted.
+    pub fn calendar_event(&self, source: &str, event_id: &str) -> Result<Option<CalendarEvent>> {
+        let g = self.lock();
+        let s: Option<Option<String>> = g
+            .conn
+            .query_row(
+                "SELECT data FROM calendar WHERE source = ?1 AND event_id = ?2 AND deleted = 0",
+                params![source, event_id],
+                |r| r.get(0),
+            )
+            .optional()
+            .sql()?;
+        s.flatten()
+            .map(|s| serde_json::from_str(&s).map_err(Into::into))
+            .transpose()
+    }
+
+    /// Every live (not deleted) event of one calendar source, any time.
+    pub fn calendar_events_of(&self, source: &str) -> Result<Vec<CalendarEvent>> {
+        let g = self.lock();
+        let mut st = g
+            .conn
+            .prepare_cached(
+                "SELECT data FROM calendar WHERE source = ?1 AND deleted = 0
+                 ORDER BY start_ms, event_id",
+            )
+            .sql()?;
+        let rows = st
+            .query_map(params![source], |r| r.get::<_, String>(0))
+            .sql()?
+            .collect::<rusqlite::Result<Vec<_>>>()
+            .sql()?;
+        rows.iter()
+            .map(|s| serde_json::from_str(s).map_err(Into::into))
+            .collect()
+    }
+
     pub(crate) fn with_conn<T>(&self, f: impl FnOnce(&mut Connection) -> Result<T>) -> Result<T> {
         let mut g = self.lock();
         f(&mut g.conn)

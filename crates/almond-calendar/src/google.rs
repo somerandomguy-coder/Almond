@@ -4,13 +4,16 @@
 //! * `sync(None)` lists all *selected* calendars (those shown in Google Calendar's UI, plus the
 //!   primary one) and fetches events in the [`SyncWindow`] (default −30 / +90 days).
 //! * `sync(Some(cursor))` uses each calendar's `syncToken`; HTTP 410 (token expired) falls back
-//!   to a full sync of that calendar; calendars that newly appear are fully synced.
+//!   to a full sync of that calendar and lists it in `CalendarDelta::reset_calendars` (events
+//!   deleted while the token was stale never come back as "cancelled"); calendars that newly
+//!   appear are fully synced; calendars that disappear (unsubscribed, hidden) are reset too.
 //! * Cancelled events/instances in an incremental response become `deletes`.
 //! * The cursor is a small JSON document (`{"v":1,"calendars":{"<calendarId>":"<syncToken>"}}`);
 //!   callers should treat it as opaque.
 //!
 //! Event ids are Google's (instance ids for recurring events, e.g. `abc123_20261110T090000Z`).
-//! All-day events start/end at UTC midnight of their dates (end exclusive).
+//! All-day events start/end at midnight of their dates (end exclusive) in the calendar's time
+//! zone (`timeZone` of the events list, else of the calendar list entry, else UTC).
 
 use crate::conference::{self, GOOGLE_MEET};
 use crate::oauth::{AccessTokenProvider, authorized_get, json_or_error};
@@ -21,7 +24,7 @@ use almond_types::calendar::{
 use almond_types::time::UnixMs;
 use almond_types::{Error, Result};
 use async_trait::async_trait;
-use chrono::{DateTime, NaiveDate, SecondsFormat, Utc};
+use chrono::{DateTime, NaiveDate, SecondsFormat, TimeZone, Utc};
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, HashMap};
 use std::sync::Arc;
@@ -129,9 +132,10 @@ impl GoogleCalendar {
         &self,
         cal_id: &str,
         sync_token: Option<&str>,
-    ) -> std::result::Result<(Vec<GEvent>, Option<String>), FetchError> {
+    ) -> std::result::Result<(Vec<GEvent>, Option<String>, Option<String>), FetchError> {
         let (tmin, tmax) = self.window.bounds((self.clock)());
         let mut items = Vec::new();
+        let mut tz: Option<String> = None;
         let mut page: Option<String> = None;
         loop {
             let mut u = self
@@ -163,9 +167,10 @@ impl GoogleCalendar {
             }
             let page_data: GEventsPage = json_or_error(resp).await.map_err(FetchError::Other)?;
             items.extend(page_data.items);
+            tz = tz.or(page_data.time_zone);
             match page_data.next_page_token {
                 Some(p) => page = Some(p),
-                None => return Ok((items, page_data.next_sync_token)),
+                None => return Ok((items, page_data.next_sync_token, tz)),
             }
         }
     }
@@ -208,15 +213,30 @@ impl CalendarSource for GoogleCalendar {
         };
         let mut upserts: HashMap<String, CalendarEvent> = HashMap::new();
         let mut deletes: Vec<String> = Vec::new();
+        // calendars we had a token for that are gone from the list: drop their events
+        let mut reset: Vec<String> = prev
+            .calendars
+            .keys()
+            .filter(|id| {
+                !calendars
+                    .iter()
+                    .any(|c| c.id.as_deref() == Some(id.as_str()))
+            })
+            .cloned()
+            .collect();
 
         for cal in &calendars {
             let cal_id = cal.id.clone().unwrap_or_default();
             let name = cal.summary_override.clone().or_else(|| cal.summary.clone());
             let token = prev.calendars.get(&cal_id).map(String::as_str);
-            let (items, next_token, incremental) = match self.fetch_events(&cal_id, token).await {
-                Ok((i, t)) => (i, t, token.is_some()),
+            let (items, next_token, tz, incremental) = match self.fetch_events(&cal_id, token).await
+            {
+                Ok((i, t, tz)) => (i, t, tz, token.is_some()),
                 Err(FetchError::Gone) => match self.fetch_events(&cal_id, None).await {
-                    Ok((i, t)) => (i, t, false),
+                    Ok((i, t, tz)) => {
+                        reset.push(cal_id.clone());
+                        (i, t, tz, false)
+                    }
                     Err(FetchError::Gone) => {
                         return Err(Error::Network("calendar returned 410 on full sync".into()));
                     }
@@ -232,7 +252,8 @@ impl CalendarSource for GoogleCalendar {
                     }
                     continue;
                 }
-                if let Some(ev) = normalize(&ge, &source, &cal_id, name.as_deref()) {
+                let tz = tz.as_deref().or(cal.time_zone.as_deref());
+                if let Some(ev) = normalize(&ge, &source, &cal_id, name.as_deref(), tz) {
                     upserts.insert(ev.event_id.clone(), ev);
                 }
             }
@@ -249,7 +270,7 @@ impl CalendarSource for GoogleCalendar {
             upserts,
             deletes,
             next_cursor: Some(serde_json::to_string(&next)?),
-            reset_calendars: vec![],
+            reset_calendars: reset,
         })
     }
 }
@@ -263,16 +284,20 @@ pub(crate) fn normalize(
     source: &str,
     calendar_id: &str,
     calendar_name: Option<&str>,
+    time_zone: Option<&str>,
 ) -> Option<CalendarEvent> {
     if matches!(ge.event_type.as_deref(), Some("workingLocation")) {
         return None;
     }
     let id = ge.id.clone()?;
-    let (start, all_day) = ge.start.as_ref()?.to_ms()?;
+    let tz: chrono_tz::Tz = time_zone
+        .and_then(|z| z.parse().ok())
+        .unwrap_or(chrono_tz::UTC);
+    let (start, all_day) = ge.start.as_ref()?.to_ms(tz)?;
     let end = ge
         .end
         .as_ref()
-        .and_then(|e| e.to_ms())
+        .and_then(|e| e.to_ms(tz))
         .map(|(e, _)| e)
         .unwrap_or(start);
 
@@ -385,6 +410,7 @@ struct GCalendarListEntry {
     primary: bool,
     #[serde(default)]
     deleted: bool,
+    time_zone: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -394,6 +420,8 @@ struct GEventsPage {
     items: Vec<GEvent>,
     next_page_token: Option<String>,
     next_sync_token: Option<String>,
+    /// The calendar's time zone (used for all-day events).
+    time_zone: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -423,13 +451,19 @@ struct GTime {
 }
 
 impl GTime {
-    /// (ms, all_day)
-    fn to_ms(&self) -> Option<(UnixMs, bool)> {
+    /// (ms, all_day). Dates (all-day events) are midnight in `tz`.
+    fn to_ms(&self, tz: chrono_tz::Tz) -> Option<(UnixMs, bool)> {
         if let Some(dt) = &self.date_time {
             return parse_rfc3339(dt).map(|m| (m, false));
         }
         let d = NaiveDate::parse_from_str(self.date.as_deref()?, "%Y-%m-%d").ok()?;
-        Some((d.and_hms_opt(0, 0, 0)?.and_utc().timestamp_millis(), true))
+        let midnight = d.and_hms_opt(0, 0, 0)?;
+        // a zone that skips midnight (DST at 00:00): first instant of that day
+        let local = tz.from_local_datetime(&midnight).earliest().or_else(|| {
+            tz.from_local_datetime(&(midnight + chrono::Duration::hours(1)))
+                .earliest()
+        })?;
+        Some((local.timestamp_millis(), true))
     }
 }
 
@@ -507,7 +541,7 @@ mod tests {
                 "conferenceSolution": {"key": {"type": "hangoutsMeet"}}
             }
         }));
-        let ev = normalize(&e, "google:me@example.com", "primary", Some("Me")).unwrap();
+        let ev = normalize(&e, "google:me@example.com", "primary", Some("Me"), None).unwrap();
         assert_eq!(ev.start, parse_rfc3339("2026-11-10T02:00:00Z").unwrap());
         assert_eq!(ev.end - ev.start, 15 * 60 * 1000);
         assert!(!ev.all_day);
@@ -531,9 +565,14 @@ mod tests {
             "start": {"date": "2026-11-10"}, "end": {"date": "2026-11-11"},
             "description": "Join <a href=\"https://zoom.us/j/123\">here</a>"
         }));
-        let ev = normalize(&e, "s", "c", None).unwrap();
+        let ev = normalize(&e, "s", "c", None, None).unwrap();
         assert!(ev.all_day);
         assert_eq!(ev.end - ev.start, 24 * 3600 * 1000);
+        assert_eq!(ev.start, parse_rfc3339("2026-11-10T00:00:00Z").unwrap());
+        // in the calendar's zone: midnight in Ho Chi Minh City is 17:00 UTC the day before
+        let vn = normalize(&e, "s", "c", None, Some("Asia/Ho_Chi_Minh")).unwrap();
+        assert_eq!(vn.start, parse_rfc3339("2026-11-09T17:00:00Z").unwrap());
+        assert_eq!(vn.end - vn.start, 24 * 3600 * 1000);
         assert_eq!(ev.title, "(No title)");
         assert_eq!(ev.conference_app.as_deref(), Some("zoom"));
         assert_eq!(ev.status, "confirmed");
@@ -545,7 +584,7 @@ mod tests {
             "id": "w", "eventType": "workingLocation",
             "start": {"date": "2026-11-10"}, "end": {"date": "2026-11-11"}
         }));
-        assert!(normalize(&e, "s", "c", None).is_none());
+        assert!(normalize(&e, "s", "c", None, None).is_none());
     }
 
     #[test]
