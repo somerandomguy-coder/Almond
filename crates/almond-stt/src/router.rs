@@ -68,7 +68,11 @@ pub struct RoutedEngine {
 }
 
 /// Default for [`RoutedEngine::verify_min_confidence`] (eval/stt/RESULTS.md).
-pub const VERIFY_MIN_CONFIDENCE: f32 = 0.6;
+pub const VERIFY_MIN_CONFIDENCE: f32 = 0.4;
+
+/// Fewer words than this (per 10 s of speech) in a secondary-language window means the
+/// decoder did not understand it (conversational English is ~25 words / 10 s).
+const MIN_WORDS_PER_10S: u64 = 7;
 
 impl RoutedEngine {
     pub fn new(
@@ -275,6 +279,19 @@ where
             return redecode(win.to_vec(), base_ms).await;
         }
         return Ok(segs);
+    }
+    // Far too few words for the speech in the window (Whisper told to expect English answered
+    // 7 s of Vietnamese with "oh"): the whole window goes to the primary engine.
+    let speech_ms: u64 = split_on_silence(win, &VadParams::default())
+        .iter()
+        .map(|(a, b)| samples_to_ms(b - a))
+        .sum();
+    let n_words: usize = segs.iter().map(|s| s.text.split_whitespace().count()).sum();
+    if speech_ms >= 1500 && (n_words as u64) * 1000 < speech_ms * MIN_WORDS_PER_10S / 10 {
+        if std::env::var_os("ALMOND_STT_DEBUG").is_some() {
+            eprintln!("[route] {n_words} words for {speech_ms} ms of speech -> primary engine");
+        }
+        return redecode(win.to_vec(), base_ms).await;
     }
     let pad = 150u64;
     let win_end = base_ms + samples_to_ms(win.len());
@@ -550,7 +567,7 @@ mod tests {
     fn vi_en(lid: f32, en_conf: f32) -> RoutedEngine {
         let mut engines: BTreeMap<String, Arc<dyn SttEngine>> = BTreeMap::new();
         engines.insert("vi".into(), Arc::new(Fixed("xin chào", 0.9)));
-        let en: Arc<dyn SttEngine> = Arc::new(Fixed("hello", en_conf));
+        let en: Arc<dyn SttEngine> = Arc::new(Fixed("hello there how are you doing today", en_conf));
         engines.insert("en".into(), en.clone());
         RoutedEngine::new(Arc::new(EnLid(lid)), engines, en)
     }
@@ -577,7 +594,7 @@ mod tests {
             .transcribe(&voice(800), 0, AudioChannel::Mic, &vi_en_opts())
             .await
             .unwrap();
-        assert_eq!(segs[0].text, "hello");
+        assert_eq!(segs[0].text, "hello there how are you doing today");
     }
 
     #[tokio::test]
@@ -586,7 +603,7 @@ mod tests {
             .transcribe(&voice(4000), 0, AudioChannel::Mic, &vi_en_opts())
             .await
             .unwrap();
-        assert_eq!(segs[0].text, "hello");
+        assert_eq!(segs[0].text, "hello there how are you doing today");
         assert_eq!(segs[0].lang, Some(LangTag::en()));
         // English decode with low confidence: re-decoded as Vietnamese
         let segs = vi_en(0.99, 0.3)
@@ -596,6 +613,20 @@ mod tests {
         assert_eq!(segs.len(), 1);
         assert_eq!(segs[0].text, "xin chào");
         assert_eq!(segs[0].lang, Some(LangTag::vi()));
+    }
+
+    #[tokio::test]
+    async fn one_word_for_seconds_of_speech_goes_to_the_primary_engine() {
+        let mut engines: BTreeMap<String, Arc<dyn SttEngine>> = BTreeMap::new();
+        engines.insert("vi".into(), Arc::new(Fixed("xin chào các bạn", 0.9)));
+        let en: Arc<dyn SttEngine> = Arc::new(Fixed("oh", 0.97));
+        engines.insert("en".into(), en.clone());
+        let r = RoutedEngine::new(Arc::new(EnLid(0.99)), engines, en);
+        let segs = r
+            .transcribe(&voice(5000), 0, AudioChannel::Mic, &vi_en_opts())
+            .await
+            .unwrap();
+        assert_eq!(segs[0].text, "xin chào các bạn");
     }
 
     #[test]

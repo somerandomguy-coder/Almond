@@ -22,9 +22,10 @@ pub enum DeviceClass {
 /// Which model to use for what.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Route {
-    /// Offline / post-meeting transcription (quality first).
+    /// Offline / post-meeting transcription (quality first). Also re-decodes each live-caption
+    /// final ([`crate::live::LiveRouter`]).
     pub offline: String,
-    /// Live captions (latency first).
+    /// Live-caption partials (latency first).
     pub live: String,
 }
 
@@ -33,7 +34,8 @@ pub struct RoutingTable {
     pub device: DeviceClass,
     /// Primary language subtag ("vi", "en", "zh") -> route.
     pub routes: BTreeMap<String, Route>,
-    /// Used for languages not in `routes` and for language identification.
+    /// Used for languages not in `routes` and for language identification (whose
+    /// probabilities become a language per utterance through [`crate::langid::LidPolicy`]).
     pub fallback: Route,
 }
 

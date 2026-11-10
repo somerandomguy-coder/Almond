@@ -74,7 +74,16 @@ fn level(x: &[f32]) -> Vec<f32> {
 }
 
 fn trim(x: &[f32]) -> Vec<f32> {
-    let r = split_on_silence(x, &Default::default());
+    trim_pad(x, 150)
+}
+
+/// Cut leading / trailing silence, keeping `pad_ms` around the speech.
+fn trim_pad(x: &[f32], pad_ms: u64) -> Vec<f32> {
+    let p = almond_stt::audio::VadParams {
+        pad_ms,
+        ..Default::default()
+    };
+    let r = split_on_silence(x, &p);
     match (r.first(), r.last()) {
         (Some(a), Some(b)) => x[a.0..b.1].to_vec(),
         _ => x.to_vec(),
@@ -438,8 +447,9 @@ async fn main() {
     for i in 0..n.min(40) {
         let v = &vivos[(n + i * 3) % vivos.len()];
         let e = &fen[(n + i * 2) % fen.len()];
-        let xv = level(&trim(&load_wav_16k_mono(v["audio"].as_str().unwrap()).unwrap()));
-        let xe = level(&trim(&load_wav_16k_mono(e["audio"].as_str().unwrap()).unwrap()));
+        // tight trims: the join must not leave a pause the VAD could split at
+        let xv = level(&trim_pad(&load_wav_16k_mono(v["audio"].as_str().unwrap()).unwrap(), 30));
+        let xe = level(&trim_pad(&load_wav_16k_mono(e["audio"].as_str().unwrap()).unwrap(), 30));
         let gap = vec![0.0f32; ms_to_samples(rng.range(0, 150))];
         let (tv, te) = (v["text"].as_str().unwrap(), e["text"].as_str().unwrap());
         let mut x = vec![0.0f32; ms_to_samples(300)];
@@ -457,8 +467,8 @@ async fn main() {
         mixed.push((x, ta.to_string(), tb.to_string(), boundary));
     }
 
-    for set in sets.split(',') {
-        for c in configs.split(',') {
+    for set in sets.split([',', ':']) {
+        for c in configs.split([',', ':']) {
             let t = Instant::now();
             let mut out = json!({"set": set, "config": c});
             match set {
