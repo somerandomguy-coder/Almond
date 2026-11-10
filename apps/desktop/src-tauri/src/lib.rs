@@ -40,6 +40,7 @@ fn handle(invoke: Invoke) -> bool {
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
             let data_dir = app.path().app_data_dir()?;
             let cfg = CoreConfig::new(data_dir, device_name());

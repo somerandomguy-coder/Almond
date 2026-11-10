@@ -47,6 +47,10 @@ export interface ApiMethods {
   "meetings.create": [CreateMeetingParams, Meeting];
   "meetings.update": [UpdateMeetingParams, Meeting];
   "meetings.delete": [{ id: Id }, null];
+  /** Import an audio/video file on this device as a new meeting (resolves when it is stored; processing follows). */
+  "meetings.import": [ImportParams, Meeting];
+  /** Stop a running import (id from `import.progress`); true if one was running. */
+  "meetings.importCancel": [{ meeting_id: Id }, boolean];
   "recording.start": [StartRecordingParams, RecordingStatus];
   "recording.stop": [Record<string, never>, RecordingStatus];
   "recording.status": [Record<string, never>, RecordingStatus];
@@ -91,6 +95,33 @@ export interface ApiMethods {
   "settings.set": [{ key: string; value: JsonValue }, null];
 }
 
+/** `meetings.import` params (Rust: `almond_core::capture::import::ImportParams`). */
+export interface ImportParams {
+  /** Absolute path of the file on this device. */
+  path: string;
+  /** Default: the file name without extension. */
+  title?: string | null;
+  /** Spoken language; default: detected by transcription. */
+  language?: "vi" | "en" | null;
+}
+
+export type ImportStage = "decoding" | "storing" | "done" | "failed" | "cancelled";
+
+/** `import.progress` payload (Rust: `almond_core::capture::import::ImportProgress`). */
+export interface ImportProgress {
+  /** Id the imported meeting gets (for `meetings.importCancel`). */
+  meeting_id: Id;
+  path: string;
+  file_name: string;
+  stage: ImportStage;
+  /** 0..1 when known. */
+  progress: number | null;
+  processed_ms: number;
+  duration_ms: number | null;
+  decoder: string | null;
+  error: string | null;
+}
+
 /** `storage.usage`: bytes on this device. `audio_bytes` is the audio part of `blobs_bytes`. */
 export interface StorageUsage {
   db_bytes: number;
@@ -111,6 +142,7 @@ export interface ApiNotifications {
   "artifact.added": Artifact;
   "sync.progress": SyncProgress;
   "calendar.reminder": MeetingReminder;
+  "import.progress": ImportProgress;
 }
 export type NotificationName = keyof ApiNotifications;
 

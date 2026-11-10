@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { type SVGProps, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Link, useNavigate } from "react-router";
 import type { Meeting } from "../gen/Meeting";
@@ -7,9 +7,21 @@ import type { UpcomingEvent } from "../gen/UpcomingEvent";
 import { useApi, useLoad, useNotification } from "../api/context";
 import { errorMessage } from "../api/errors";
 import { useFormat } from "../lib/format";
+import { baseName, pickMediaFile, useFileDrop } from "../lib/importMedia";
+import { formatClock } from "../lib/text";
 import { startNotes } from "../lib/startNotes";
+import type { ImportProgress } from "../api/types";
 import { useAppState } from "../state/AppState";
 import { Button, Card, ErrorNote, Highlighted, Icon, Loading, Pill, SectionTitle } from "../components/ui";
+
+function UploadIcon(p: SVGProps<SVGSVGElement>) {
+  return (
+    <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="round" aria-hidden {...p}>
+      <path d="M12 15V4M7.5 8.5 12 4l4.5 4.5" />
+      <path d="M4 14v5a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-5" />
+    </svg>
+  );
+}
 
 function useNow(intervalMs = 30_000) {
   const [now, setNow] = useState(Date.now());
@@ -179,7 +191,7 @@ function Upcoming({ events, now }: { events: UpcomingEvent[]; now: number }) {
   );
 }
 
-function Recent({ meetings }: { meetings: Meeting[] }) {
+function Recent({ meetings, onImport, importing }: { meetings: Meeting[]; onImport: () => void; importing: boolean }) {
   const { t } = useTranslation();
   const f = useFormat();
   const groups = useMemo(() => {
@@ -197,7 +209,14 @@ function Recent({ meetings }: { meetings: Meeting[] }) {
     <section>
       <SectionTitle>{t("home.recent")}</SectionTitle>
       {meetings.length === 0 ? (
-        <p className="text-sm text-muted">{t("home.noMeetings")}</p>
+        <Card className="flex flex-col items-start gap-3 text-sm text-muted">
+          <p>{t("home.noMeetings")}</p>
+          <p>{t("import.emptyHint")}</p>
+          <Button size="sm" onClick={onImport} disabled={importing}>
+            <UploadIcon width={14} height={14} />
+            {t("import.button")}
+          </Button>
+        </Card>
       ) : (
         <div className="flex flex-col gap-5">
           {groups.map((g) => (
@@ -227,6 +246,103 @@ function Recent({ meetings }: { meetings: Meeting[] }) {
   );
 }
 
+type ImportState = {
+  path: string;
+  fileName: string;
+  meetingId: string | null;
+  progress: number | null;
+  processedMs: number;
+  stage: ImportProgress["stage"];
+  error: unknown;
+  cancelling: boolean;
+};
+
+/** `meetings.import` with progress; opens the new meeting when it is stored. */
+function useImport() {
+  const api = useApi();
+  const nav = useNavigate();
+  const [state, setState] = useState<ImportState | null>(null);
+  const current = useRef<string | null>(null);
+
+  useNotification("import.progress", (p) => {
+    if (p.path !== current.current) return;
+    setState((s) => (s ? { ...s, meetingId: p.meeting_id, progress: p.progress, processedMs: p.processed_ms, stage: p.stage } : s));
+  });
+
+  const start = useCallback(
+    async (path: string) => {
+      if (current.current) return;
+      current.current = path;
+      setState({ path, fileName: baseName(path), meetingId: null, progress: null, processedMs: 0, stage: "decoding", error: null, cancelling: false });
+      try {
+        const m = await api.call("meetings.import", { path });
+        current.current = null;
+        nav(`/meeting/${m.id}`);
+      } catch (e) {
+        current.current = null;
+        setState((s) => (s && !s.cancelling ? { ...s, error: e, stage: "failed" } : null));
+      }
+    },
+    [api, nav],
+  );
+
+  const cancel = useCallback(() => {
+    setState((s) => {
+      if (s?.meetingId) void api.call("meetings.importCancel", { meeting_id: s.meetingId }).catch(() => {});
+      return s ? { ...s, cancelling: true } : s;
+    });
+  }, [api]);
+
+  return { state, start, cancel, dismiss: () => setState(null), busy: state != null && state.error == null };
+}
+
+function ImportCard({ s, onCancel, onDismiss }: { s: ImportState; onCancel: () => void; onDismiss: () => void }) {
+  const { t } = useTranslation();
+  const pct = s.progress != null ? Math.round(s.progress * 100) : null;
+  return (
+    <Card className="flex flex-col gap-3" >
+      <div className="flex items-center gap-3" data-testid="import-card">
+        <UploadIcon className="shrink-0 text-accent" />
+        <div className="min-w-0 flex-1">
+          <p className="truncate font-medium">{s.fileName}</p>
+          <p className="text-xs text-muted">
+            {s.error
+              ? t("import.failed")
+              : s.cancelling
+                ? t("import.cancelling")
+                : s.stage === "storing" || s.stage === "done"
+                  ? t("import.storing")
+                  : t("import.decoding", { time: formatClock(s.processedMs) })}
+          </p>
+        </div>
+        {s.error ? (
+          <Button size="sm" variant="ghost" onClick={onDismiss}>
+            {t("import.dismiss")}
+          </Button>
+        ) : (
+          <Button size="sm" variant="ghost" onClick={onCancel} disabled={s.cancelling || !s.meetingId}>
+            {t("import.cancel")}
+          </Button>
+        )}
+      </div>
+      {s.error ? (
+        <ErrorNote error={s.error} />
+      ) : (
+        <div
+          role="progressbar"
+          aria-label={t("import.progressLabel", { name: s.fileName })}
+          aria-valuemin={0}
+          aria-valuemax={100}
+          aria-valuenow={pct ?? undefined}
+          className="h-1.5 overflow-hidden rounded-full bg-sunken"
+        >
+          <div className={pct == null ? "h-full w-1/3 animate-pulse bg-accent" : "h-full bg-accent transition-[width]"} style={pct == null ? undefined : { width: `${pct}%` }} />
+        </div>
+      )}
+    </Card>
+  );
+}
+
 export function Home() {
   const { t } = useTranslation();
   const api = useApi();
@@ -246,22 +362,48 @@ export function Home() {
     nav(`/meeting/${id}`);
   };
 
+  const imp = useImport();
+  const [pickError, setPickError] = useState<unknown>(null);
+  const importFile = async () => {
+    setPickError(null);
+    try {
+      const path = await pickMediaFile(api, { title: t("import.dialogTitle"), filterName: t("import.filterName") });
+      if (path) void imp.start(path);
+    } catch (e) {
+      setPickError(e);
+    }
+  };
+  const dragging = useFileDrop(api, (path) => void imp.start(path), !imp.busy);
+
   return (
     <div className="mx-auto flex max-w-3xl flex-col gap-8 px-4 py-6 sm:px-8 sm:py-10">
       <div className="flex items-end justify-between gap-4">
         <Greeting />
-        <Button variant="primary" onClick={quick} disabled={recording.state !== "idle"}>
-          <Icon.plus width={16} height={16} />
-          {t("home.quickNote")}
-        </Button>
+        <div className="flex flex-wrap justify-end gap-2">
+          <Button onClick={importFile} disabled={imp.busy} title={t("import.dropHint")}>
+            <UploadIcon width={16} height={16} />
+            {t("import.button")}
+          </Button>
+          <Button variant="primary" onClick={quick} disabled={recording.state !== "idle"}>
+            <Icon.plus width={16} height={16} />
+            {t("home.quickNote")}
+          </Button>
+        </div>
       </div>
+      {dragging && (
+        <div className="pointer-events-none fixed inset-0 z-50 flex items-center justify-center bg-accent/10 p-8" data-testid="drop-overlay">
+          <div className="rounded-2xl border-2 border-dashed border-accent bg-surface px-8 py-6 text-center font-medium">{t("import.dropHere")}</div>
+        </div>
+      )}
+      {pickError != null && <ErrorNote error={pickError} />}
+      {imp.state && <ImportCard s={imp.state} onCancel={imp.cancel} onDismiss={imp.dismiss} />}
       <SearchBox onResults={onResults} />
       {search.hits ? (
         <SearchResults q={search.q} hits={search.hits} meetings={meetings.data ?? []} />
       ) : (
         <>
           {upcoming.error ? <ErrorNote error={upcoming.error} onRetry={upcoming.reload} /> : upcoming.data ? <Upcoming events={upcoming.data} now={now} /> : <Loading />}
-          {meetings.error ? <ErrorNote error={meetings.error} onRetry={meetings.reload} /> : meetings.data ? <Recent meetings={meetings.data} /> : <Loading />}
+          {meetings.error ? <ErrorNote error={meetings.error} onRetry={meetings.reload} /> : meetings.data ? <Recent meetings={meetings.data} onImport={importFile} importing={imp.busy} /> : <Loading />}
         </>
       )}
     </div>

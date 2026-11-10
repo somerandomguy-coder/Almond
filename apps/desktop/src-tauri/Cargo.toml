@@ -21,6 +21,8 @@ tauri-build = { version = "2", features = [] }
 # protocol-asset: `audio.url` returns asset-protocol URLs for recorded audio (tauri.conf.json scope).
 tauri = { version = "2", features = ["protocol-asset"] }
 tauri-plugin-opener = "2"
+# "Import audio/video": native file picker (`@tauri-apps/plugin-dialog`, capability `dialog:allow-open`).
+tauri-plugin-dialog = "2"
 serde = { workspace = true }
 serde_json = { workspace = true }
 almond-types = { path = "../../../crates/almond-types" }
