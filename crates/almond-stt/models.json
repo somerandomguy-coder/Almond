@@ -1,0 +1,184 @@
+{
+  "models": [
+    {
+      "id": "whisper:large-v3-turbo",
+      "engine": "whisper",
+      "role": "stt",
+      "languages": ["en", "zh", "vi"],
+      "streaming": false,
+      "source": {
+        "kind": "file",
+        "url": "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3-turbo.bin",
+        "sha256": "1fc70f774d38eb169993ac391eea357ef47c88757ef72ee5943879b7e8e2bc69",
+        "size": 1624555275,
+        "convert": null
+      },
+      "files": { "model": "ggml-large-v3-turbo.bin" },
+      "license": "MIT",
+      "notes": "OpenAI Whisper large-v3-turbo (809M, 4 decoder layers), fp16 ggml."
+    },
+    {
+      "id": "whisper:large-v3-turbo-q5_0",
+      "engine": "whisper",
+      "role": "stt",
+      "languages": ["en", "zh", "vi"],
+      "streaming": false,
+      "source": {
+        "kind": "file",
+        "url": "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3-turbo-q5_0.bin",
+        "sha256": "394221709cd5ad1f40c46e6031ca61bce88931e6e088c188294c6d5a55ffa7e2",
+        "size": 574041195,
+        "convert": null
+      },
+      "files": { "model": "ggml-large-v3-turbo-q5_0.bin" },
+      "license": "MIT",
+      "notes": "Quantized turbo; ~3x smaller, good for CPU-only laptops."
+    },
+    {
+      "id": "whisper:small",
+      "engine": "whisper",
+      "role": "stt",
+      "languages": ["en", "zh", "vi"],
+      "streaming": false,
+      "source": {
+        "kind": "file",
+        "url": "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small.bin",
+        "sha256": "1be3a9b2063867b937e64e2ec7483364a79917e157fa98c5d94b5c1fffea987b",
+        "size": 487601967,
+        "convert": null
+      },
+      "files": { "model": "ggml-small.bin" },
+      "license": "MIT",
+      "notes": "Multilingual small; fallback EN model and language-ID model on weak devices."
+    },
+    {
+      "id": "whisper:phowhisper-small",
+      "engine": "whisper",
+      "role": "stt",
+      "languages": ["vi"],
+      "streaming": false,
+      "source": {
+        "kind": "convert",
+        "url": "https://huggingface.co/vinai/PhoWhisper-small",
+        "sha256": null,
+        "size": null,
+        "convert": "python eval/stt/convert_phowhisper.py small  (HF transformers -> ggml f16)"
+      },
+      "files": { "model": "ggml-phowhisper-small.bin" },
+      "license": "BSD-3-Clause",
+      "notes": "VinAI PhoWhisper-small (244M), fine-tuned on 844h Vietnamese."
+    },
+    {
+      "id": "whisper:phowhisper-medium",
+      "engine": "whisper",
+      "role": "stt",
+      "languages": ["vi"],
+      "streaming": false,
+      "source": {
+        "kind": "convert",
+        "url": "https://huggingface.co/vinai/PhoWhisper-medium",
+        "sha256": null,
+        "size": null,
+        "convert": "python eval/stt/convert_phowhisper.py medium  (HF transformers -> ggml f16)"
+      },
+      "files": { "model": "ggml-phowhisper-medium.bin" },
+      "license": "BSD-3-Clause",
+      "notes": "VinAI PhoWhisper-medium (769M)."
+    },
+    {
+      "id": "whisper:phowhisper-large",
+      "engine": "whisper",
+      "role": "stt",
+      "languages": ["vi"],
+      "streaming": false,
+      "source": {
+        "kind": "convert",
+        "url": "https://huggingface.co/vinai/PhoWhisper-large",
+        "sha256": null,
+        "size": null,
+        "convert": "python eval/stt/convert_phowhisper.py large  (HF transformers -> ggml f16)"
+      },
+      "files": { "model": "ggml-phowhisper-large.bin" },
+      "license": "BSD-3-Clause",
+      "notes": "VinAI PhoWhisper-large (1.55B, based on whisper-large-v2)."
+    },
+    {
+      "id": "sherpa:zipformer-vi-int8",
+      "engine": "sherpa-transducer",
+      "role": "stt",
+      "languages": ["vi"],
+      "streaming": false,
+      "source": {
+        "kind": "tar_bz2",
+        "url": "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-zipformer-vi-int8-2025-04-20.tar.bz2",
+        "sha256": "48d0fdc9b3515eb9b00c4dfec2883207ee5ebe5c95b1959e7afce87fc3391938",
+        "size": 60181038,
+        "convert": null
+      },
+      "files": {
+        "encoder": "encoder-epoch-12-avg-8.int8.onnx",
+        "decoder": "decoder-epoch-12-avg-8.onnx",
+        "joiner": "joiner-epoch-12-avg-8.int8.onnx",
+        "tokens": "tokens.txt"
+      },
+      "license": "Apache-2.0",
+      "notes": "Offline Zipformer transducer (~70k h Vietnamese). Wrapped in pseudo-streaming."
+    },
+    {
+      "id": "sherpa:zipformer-vi-30m-int8",
+      "engine": "sherpa-transducer",
+      "role": "stt",
+      "languages": ["vi"],
+      "streaming": false,
+      "source": {
+        "kind": "tar_bz2",
+        "url": "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-zipformer-vi-30M-int8-2026-02-09.tar.bz2",
+        "sha256": "da8b637947091829d7ee9eda23da2a4ec7caa399233a3f4e34eb719fb2ea6b9b",
+        "size": 26442384,
+        "convert": null
+      },
+      "files": {
+        "encoder": "encoder.int8.onnx",
+        "decoder": "decoder.onnx",
+        "joiner": "joiner.int8.onnx",
+        "tokens": "tokens.txt"
+      },
+      "license": "Apache-2.0",
+      "notes": "30M-param offline Zipformer transducer, int8 (~26 MB). Phone-sized."
+    },
+    {
+      "id": "sherpa:pyannote-seg-3.0",
+      "engine": "sherpa-pyannote",
+      "role": "segmentation",
+      "languages": [],
+      "streaming": false,
+      "source": {
+        "kind": "tar_bz2",
+        "url": "https://github.com/k2-fsa/sherpa-onnx/releases/download/speaker-segmentation-models/sherpa-onnx-pyannote-segmentation-3-0.tar.bz2",
+        "sha256": "24615ee884c897d9d2ba09bb4d30da6bb1b15e685065962db5b02e76e4996488",
+        "size": 6958444,
+        "convert": null
+      },
+      "files": { "model": "model.onnx", "model_int8": "model.int8.onnx" },
+      "license": "MIT",
+      "notes": "pyannote/segmentation-3.0 exported to ONNX by sherpa-onnx."
+    },
+    {
+      "id": "sherpa:3dspeaker-eres2net-base",
+      "engine": "sherpa-embedding",
+      "role": "embedding",
+      "languages": [],
+      "streaming": false,
+      "source": {
+        "kind": "file",
+        "url": "https://github.com/k2-fsa/sherpa-onnx/releases/download/speaker-recongition-models/3dspeaker_speech_eres2net_base_sv_zh-cn_3dspeaker_16k.onnx",
+        "sha256": "1a331345f04805badbb495c775a6ddffcdd1a732567d5ec8b3d5749e3c7a5e4b",
+        "size": 39593761,
+        "convert": null
+      },
+      "files": { "model": "3dspeaker_speech_eres2net_base_sv_zh-cn_3dspeaker_16k.onnx" },
+      "license": "Apache-2.0",
+      "notes": "3D-Speaker ERes2Net-base speaker embedding (16 kHz)."
+    }
+  ]
+}

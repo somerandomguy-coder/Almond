@@ -3,6 +3,58 @@ name = "almond-stt"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+description = "Almond speech-to-text: whisper.cpp + sherpa-onnx engines, pseudo-streaming, diarization, model manager, WER/CER"
+
+[features]
+default = ["download"]
+# Resumable HTTP model downloads (ureq + rustls). Without it, models must be placed manually.
+download = ["dep:ureq", "dep:tar", "dep:bzip2"]
+# whisper.cpp engine (PhoWhisper, whisper-large-v3-turbo, ...). CPU build.
+whisper = ["dep:whisper-rs"]
+# GPU back-ends for whisper.cpp. `cuda` needs the CUDA toolkit (nvcc) on PATH;
+# `vulkan` needs the Vulkan SDK (VULKAN_SDK env var + glslc).
+cuda = ["whisper", "whisper-rs/cuda"]
+vulkan = ["whisper", "whisper-rs/vulkan"]
+# sherpa-onnx engine (streaming Zipformer) + diarization (pyannote-seg + speaker embeddings).
+# Downloads prebuilt (shared) sherpa-onnx libs at build time.
+sherpa = ["dep:sherpa-onnx"]
 
 [dependencies]
 almond-types = { path = "../almond-types" }
+async-trait = "0.1.92"
+hex = "0.4"
+hound = "3.5"
+serde = { workspace = true }
+serde_json = { workspace = true }
+sha2 = "0.10"
+tokio = { version = "1.54.1", features = ["rt"] }
+tracing = "0.1"
+unicode-normalization = "0.1"
+ureq = { version = "3.5", optional = true, default-features = false, features = ["rustls"] }
+tar = { version = "0.4", optional = true }
+bzip2 = { version = "0.6", optional = true }
+whisper-rs = { version = "0.16.0", optional = true }
+# sherpa-onnx is linked as a *shared* library everywhere:
+# - Windows: the static archive is /MT and clashes with whisper.cpp (/MD) in one binary;
+# - Linux: the static archive aborts at runtime ("munmap_chunk(): invalid pointer") as soon as a
+#   recognizer is created (verified on Ubuntu 24.04 / WSL); the shared build works.
+# The sys crate copies the .dll/.so next to the binaries (and into Tauri's jniLibs on Android).
+sherpa-onnx = { version = "2.0.1", optional = true, default-features = false, features = ["shared"] }
+
+[dev-dependencies]
+almond-types = { path = "../almond-types", features = ["mock"] }
+tokio = { version = "1.54.1", features = ["rt", "rt-multi-thread", "macros", "time"] }
+
+[[example]]
+name = "transcribe"
+required-features = ["whisper"]
+
+[[example]]
+name = "diarize"
+required-features = ["sherpa"]
+
+[[example]]
+name = "live"
+
+[[example]]
+name = "stt_eval"
