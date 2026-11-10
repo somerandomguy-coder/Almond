@@ -1,0 +1,43 @@
+{
+  "id": "vi-01-sprint-planning",
+  "lang": "vi",
+  "title": "Sprint planning tuần 46",
+  "date": "2026-11-09",
+  "segments": [
+    ["Minh", "Ok mọi người, mình bắt đầu sprint planning nhé. Sprint này kéo dài hai tuần, từ thứ Hai 10/11 đến 21/11."],
+    ["Minh", "Ưu tiên số một vẫn là tính năng thanh toán qua QR, khách hàng bên ngân hàng đang hối lắm."],
+    ["Hùng", "Phần backend cho QR payment em làm được khoảng 70% rồi, còn thiếu cái webhook để nhận callback từ ngân hàng."],
+    ["Hùng", "Em estimate thêm khoảng 5 story points, chắc xong trong tuần đầu."],
+    ["Trang", "Bên mobile thì màn hình scan QR em đã có design trên Figma, nhưng chưa integrate với API của anh Hùng."],
+    ["Minh", "Vậy Trang chờ Hùng merge webhook rồi integrate luôn, deadline là thứ Sáu 14/11 nhé."],
+    ["Trang", "Ok anh, nhưng em cần staging environment chạy ổn định, tuần trước staging cứ chết suốt."],
+    ["Quân", "Staging chết là do cái database bị đầy disk, em đã tăng lên 100GB rồi, giờ chắc ổn."],
+    ["Quân", "Nhưng mình nên setup monitoring với alert cho disk usage, em sẽ làm cái đó trong sprint này."],
+    ["Minh", "Good. Còn bug login trên Android 15 thì sao? Có mấy user report là app bị crash khi mở."],
+    ["Trang", "Bug đó em reproduce được rồi, do thư viện biometric cũ không tương thích. Update lên version mới là fix được."],
+    ["Minh", "Bug này priority cao, Trang fix trước rồi mới làm QR nhé, release hotfix 2.3.1 trong ngày thứ Tư."],
+    ["Hùng", "Em đề xuất mình bỏ task refactor module notification ra khỏi sprint này, không kịp đâu."],
+    ["Minh", "Đồng ý, đẩy refactor notification sang sprint sau. Tổng capacity team mình sprint này khoảng 34 points thôi."],
+    ["Quân", "À, còn chuyện code review, dạo này PR chờ review lâu quá, có cái chờ ba ngày."],
+    ["Minh", "Vậy mình thống nhất rule mới: mỗi PR phải được review trong vòng 24 giờ, ai đang rảnh thì nhận."],
+    ["Trang", "Em thấy ổn. Có cần thêm cái bot nhắc trên Slack không anh?"],
+    ["Minh", "Có, Quân setup bot nhắc PR trên Slack luôn nhé. Ok vậy sprint goal là: release QR payment lên staging và fix crash Android."],
+    ["Minh", "Demo với khách hàng ngân hàng vào thứ Năm 20/11. Cảm ơn mọi người."]
+  ],
+  "key_points": [
+    {"point": "Sprint 2 tuần từ 10/11 đến 21/11", "keywords": [["hai tuần", "2 tuần", "10/11"]], "segments": [0]},
+    {"point": "Ưu tiên tính năng thanh toán QR; backend còn thiếu webhook", "keywords": [["qr"], ["webhook"]], "segments": [1, 2]},
+    {"point": "Trang integrate màn hình scan QR, deadline thứ Sáu 14/11", "keywords": [["trang"], ["14/11", "thứ sáu", "thứ 6"]], "segments": [4, 5]},
+    {"point": "Staging chết do database đầy disk, đã tăng lên 100GB; Quân setup monitoring/alert", "keywords": [["staging", "database", "disk", "ổ đĩa"], ["100gb", "100 gb", "monitoring", "giám sát", "alert", "cảnh báo"]], "segments": [7, 8]},
+    {"point": "Bug crash login Android 15 do thư viện biometric, hotfix 2.3.1 thứ Tư", "keywords": [["android"], ["2.3.1", "hotfix", "biometric", "crash"]], "segments": [9, 10, 11]},
+    {"point": "Đẩy refactor notification sang sprint sau; capacity 34 points", "keywords": [["refactor", "notification", "thông báo"]], "segments": [12, 13]},
+    {"point": "Rule mới: PR phải review trong 24 giờ, bot nhắc trên Slack", "keywords": [["24 giờ", "24h", "24 tiếng"], ["review", "đánh giá"]], "segments": [15, 17]},
+    {"point": "Demo với khách hàng ngân hàng thứ Năm 20/11", "keywords": [["demo"], ["20/11", "thứ năm", "thứ 5"]], "segments": [18]}
+  ],
+  "action_items": [
+    {"text": "Hùng hoàn thành webhook QR payment", "keywords": [["webhook"]], "owner": "Hùng"},
+    {"text": "Trang fix crash Android 15, release hotfix 2.3.1 thứ Tư", "keywords": [["android", "2.3.1", "hotfix", "crash"]], "owner": "Trang"},
+    {"text": "Quân setup monitoring/alert disk usage", "keywords": [["monitoring", "alert", "giám sát", "cảnh báo", "disk"]], "owner": "Quân"},
+    {"text": "Quân setup bot nhắc PR trên Slack", "keywords": [["slack", "bot"]], "owner": "Quân"}
+  ]
+}

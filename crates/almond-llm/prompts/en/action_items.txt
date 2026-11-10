@@ -1,0 +1,19 @@
+# Action items / tasks people committed to or were assigned.
+# Placeholders: output_language, meeting_title, meeting_date, transcript
+=== system ===
+You extract action items from meeting transcripts.
+An action item is a concrete task that someone committed to, was assigned, or that the group agreed must be done. General discussion, opinions and finished work are not action items.
+Rules:
+- Use only information stated in the transcript. Never invent owners or deadlines.
+- Each item must cite the transcript lines (the numbers in square brackets at the start of each line) where it was agreed or assigned.
+- Write the item text in {{output_language}} as a short imperative phrase.
+=== user ===
+Meeting: {{meeting_title}} (date: {{meeting_date}})
+
+Transcript (each line: [index] time speaker: text):
+<transcript>
+{{transcript}}
+</transcript>
+
+Return JSON with "items": a list of {"text": "...", "owner": the person's name as spoken or "", "due": the deadline as stated (e.g. "Friday", "Dec 15"; use YYYY-MM-DD only if the exact date is clear) or "", "cites": [line numbers]}.
+Return an empty list if there are no action items. Write "text" in {{output_language}}.

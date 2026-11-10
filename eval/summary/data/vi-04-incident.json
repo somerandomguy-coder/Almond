@@ -1,0 +1,41 @@
+{
+  "id": "vi-04-incident",
+  "lang": "vi",
+  "title": "Postmortem sự cố app ngày 5/11",
+  "date": "2026-11-07",
+  "segments": [
+    ["Đức", "Mình họp postmortem cho sự cố tối thứ Tư 5/11. App bị down khoảng 2 tiếng, từ 20 giờ đến 22 giờ."],
+    ["Đức", "Khoảng 12 nghìn user bị ảnh hưởng, chủ yếu không đăng nhập được và không đặt hàng được."],
+    ["Vy", "Root cause là migration database thêm index cho bảng orders, chạy trên production lúc cao điểm, khóa bảng gần 40 phút."],
+    ["Vy", "Migration đó trên staging chạy nhanh vì staging chỉ có vài nghìn dòng, còn production là 30 triệu dòng."],
+    ["Sơn", "Thêm nữa là connection pool bị cạn, các service khác retry liên tục nên làm database quá tải thêm."],
+    ["Đức", "Tại sao mất 2 tiếng mới khôi phục? Alert có bắn không?"],
+    ["Sơn", "Alert có bắn lúc 20 giờ 5 phút, nhưng người on-call hôm đó không nhận được vì PagerDuty cấu hình sai số điện thoại."],
+    ["Vy", "Đến 20 giờ 50 mới có người phát hiện qua phản ánh của khách hàng trên fanpage."],
+    ["Đức", "Ok. Action đầu tiên: mọi migration trên bảng lớn phải dùng create index concurrently và chạy ngoài giờ cao điểm, sau 23 giờ."],
+    ["Vy", "Em sẽ viết checklist migration và thêm bước review bắt buộc bởi DBA, xong trước thứ Sáu tuần này."],
+    ["Sơn", "Em sẽ thêm circuit breaker cho các service gọi database, và giới hạn retry tối đa ba lần với exponential backoff."],
+    ["Đức", "Còn PagerDuty, anh sẽ tự kiểm tra lại cấu hình on-call cho cả team ngay hôm nay, và mình làm test alert mỗi tháng một lần."],
+    ["Vy", "Mình có nên gửi thông báo xin lỗi khách hàng không anh?"],
+    ["Đức", "Có. Team CS gửi email xin lỗi kèm voucher 50 nghìn cho user bị ảnh hưởng, anh sẽ báo chị Lan bên CS."],
+    ["Sơn", "Em đề xuất làm thêm load test với dữ liệu giống production trước mỗi release lớn."],
+    ["Đức", "Đồng ý, Sơn lên kế hoạch load test, mình bàn chi tiết ở buổi họp tuần sau."]
+  ],
+  "key_points": [
+    {"point": "App down 2 tiếng (20h-22h) tối 5/11", "keywords": [["2 tiếng", "hai tiếng", "2 giờ", "20 giờ", "20h", "20:00"]], "segments": [0]},
+    {"point": "12 nghìn user bị ảnh hưởng", "keywords": [["12 nghìn", "12.000", "12000", "12k", "12 000"]], "segments": [1]},
+    {"point": "Root cause: migration thêm index bảng orders khóa bảng ~40 phút", "keywords": [["migration", "index", "chỉ mục"], ["orders", "khóa", "40 phút"]], "segments": [2, 3]},
+    {"point": "Connection pool cạn, retry làm DB quá tải thêm", "keywords": [["connection pool", "retry", "kết nối"]], "segments": [4]},
+    {"point": "PagerDuty cấu hình sai nên on-call không nhận alert", "keywords": [["pagerduty", "on-call", "alert", "cảnh báo"]], "segments": [6, 7]},
+    {"point": "Migration bảng lớn dùng index concurrently, chạy sau 23 giờ; checklist + DBA review", "keywords": [["concurrently", "23 giờ", "23h", "ngoài giờ cao điểm", "checklist", "dba"]], "segments": [8, 9]},
+    {"point": "Circuit breaker + retry tối đa 3 lần", "keywords": [["circuit breaker"]], "segments": [10]},
+    {"point": "Email xin lỗi kèm voucher 50 nghìn", "keywords": [["voucher", "xin lỗi"], ["50"]], "segments": [13]}
+  ],
+  "action_items": [
+    {"text": "Vy viết checklist migration + DBA review trước thứ Sáu", "keywords": [["checklist", "migration"]], "owner": "Vy"},
+    {"text": "Sơn thêm circuit breaker và giới hạn retry", "keywords": [["circuit breaker", "retry"]], "owner": "Sơn"},
+    {"text": "Đức kiểm tra cấu hình PagerDuty hôm nay", "keywords": [["pagerduty", "on-call"]], "owner": "Đức"},
+    {"text": "CS gửi email xin lỗi + voucher", "keywords": [["voucher", "xin lỗi", "email"]], "owner": "Đức"},
+    {"text": "Sơn lên kế hoạch load test", "keywords": [["load test", "kiểm thử tải"]], "owner": "Sơn"}
+  ]
+}

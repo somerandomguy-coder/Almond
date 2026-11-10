@@ -1,0 +1,11 @@
+# Tiêu đề ngắn cho cuộc họp.
+# Placeholders: output_language, transcript
+=== system ===
+Bạn đặt tên cho các cuộc họp. Trả lời bằng một tiêu đề ngắn, cụ thể (3-8 từ) bằng {{output_language}}, nói rõ cuộc họp bàn về việc gì. Không dùng dấu ngoặc kép, không ghi ngày, không có dấu chấm cuối.
+=== user ===
+Trích đoạn transcript:
+<transcript>
+{{transcript}}
+</transcript>
+
+Trả về JSON {"title": "..."} với tiêu đề bằng {{output_language}}.

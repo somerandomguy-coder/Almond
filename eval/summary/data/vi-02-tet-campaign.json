@@ -1,0 +1,40 @@
+{
+  "id": "vi-02-tet-campaign",
+  "lang": "vi",
+  "title": "Họp kế hoạch chiến dịch Tết",
+  "date": "2026-11-12",
+  "segments": [
+    ["Chị Hạnh", "Hôm nay mình chốt kế hoạch marketing cho Tết Bính Ngọ. Tổng ngân sách công ty duyệt là 350 triệu đồng."],
+    ["Chị Hạnh", "Chiến dịch chạy từ 15 tháng 12 đến hết mùng 5 Tết."],
+    ["Phương", "Em đề xuất chia ngân sách: 150 triệu cho TikTok, 100 triệu cho KOL, 60 triệu cho Facebook Ads, còn 40 triệu dự phòng."],
+    ["Long", "Em thấy KOL 100 triệu hơi nhiều. Năm ngoái mình thuê ba KOL mà conversion rate chỉ khoảng 1,2%."],
+    ["Phương", "Năm nay em muốn chuyển sang micro-KOL, khoảng 10 người, mỗi người 8 đến 10 triệu, engagement thường cao hơn."],
+    ["Chị Hạnh", "Ok, chị đồng ý chuyển sang micro-KOL. Nhưng phải có KPI rõ ràng: mỗi bạn ít nhất 50 nghìn view."],
+    ["Long", "Về TikTok, em đề xuất làm series video ngắn chủ đề 'Tết sum vầy', mỗi tuần ba video."],
+    ["Chị Hạnh", "Ý tưởng hay. Long lên kịch bản cho ba video đầu tiên, gửi chị trước thứ Sáu tuần này."],
+    ["Phương", "Còn bao bì hộp quà Tết thì sao chị? Nhà in báo giá 45 nghìn một hộp, mình cần 5000 hộp."],
+    ["Chị Hạnh", "Tức là 225 triệu, khoản này nằm ngoài ngân sách marketing, chị sẽ xin riêng bên sales."],
+    ["Long", "Em nghĩ mình nên chốt nhà in trước 25/11, không thì sát Tết họ quá tải, giao trễ."],
+    ["Chị Hạnh", "Đúng, Phương liên hệ nhà in chốt hợp đồng trước 25/11 nhé."],
+    ["Phương", "Dạ. Em cũng cần landing page riêng cho chiến dịch, có mã giảm giá TET2026 giảm 15%."],
+    ["Chị Hạnh", "Ok, mã giảm 15% được duyệt, nhưng chỉ áp dụng cho đơn từ 500 nghìn trở lên."],
+    ["Long", "Landing page em nhờ team dev, chắc cần hai tuần."],
+    ["Chị Hạnh", "Vậy thống nhất: tuần sau họp lại check tiến độ, Phương gửi bảng phân bổ ngân sách chi tiết cho chị trước thứ Hai."]
+  ],
+  "key_points": [
+    {"point": "Ngân sách marketing Tết 350 triệu", "keywords": [["350"]], "segments": [0]},
+    {"point": "Chiến dịch từ 15/12 đến mùng 5 Tết", "keywords": [["15/12", "15 tháng 12", "15 tháng mười hai"]], "segments": [1]},
+    {"point": "Phân bổ: 150tr TikTok, 100tr KOL, 60tr Facebook, 40tr dự phòng", "keywords": [["150"], ["tiktok"]], "segments": [2]},
+    {"point": "Chuyển sang micro-KOL (~10 người, 8-10tr), KPI 50 nghìn view", "keywords": [["micro"], ["50 nghìn", "50.000", "50k", "50 000"]], "segments": [4, 5]},
+    {"point": "Series video TikTok 'Tết sum vầy', Long gửi kịch bản trước thứ Sáu", "keywords": [["sum vầy", "kịch bản"]], "segments": [6, 7]},
+    {"point": "Hộp quà 5000 hộp x 45 nghìn = 225 triệu, ngoài ngân sách marketing", "keywords": [["225", "5000", "5.000", "hộp quà", "bao bì"]], "segments": [8, 9]},
+    {"point": "Chốt nhà in trước 25/11", "keywords": [["25/11"]], "segments": [10, 11]},
+    {"point": "Mã TET2026 giảm 15% cho đơn từ 500 nghìn", "keywords": [["15%"], ["500"]], "segments": [12, 13]}
+  ],
+  "action_items": [
+    {"text": "Long gửi kịch bản 3 video đầu trước thứ Sáu", "keywords": [["kịch bản", "video"]], "owner": "Long"},
+    {"text": "Phương chốt hợp đồng nhà in trước 25/11", "keywords": [["nhà in", "hợp đồng"]], "owner": "Phương"},
+    {"text": "Phương gửi bảng phân bổ ngân sách chi tiết trước thứ Hai", "keywords": [["phân bổ", "ngân sách"]], "owner": "Phương"},
+    {"text": "Chị Hạnh xin ngân sách hộp quà bên sales", "keywords": [["sales", "hộp quà", "bao bì"]], "owner": "Chị Hạnh"}
+  ]
+}

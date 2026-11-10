@@ -1,0 +1,37 @@
+{
+  "id": "en-04-research-lab",
+  "lang": "en",
+  "title": "Lab meeting: paper deadline",
+  "date": "2026-11-12",
+  "segments": [
+    ["Prof. Chen", "The ACL submission deadline is February 15th, so we have about three months. Let's go over where each experiment stands."],
+    ["Huy", "The Vietnamese summarization baseline is done. Our fine-tuned model beats the baseline by 2.1 ROUGE-L points on the VLSP test set."],
+    ["Prof. Chen", "That's a decent gain, but reviewers will ask about human evaluation. ROUGE alone won't convince them."],
+    ["Huy", "I can set up a human eval with three annotators on 200 samples. It would cost about 600 dollars on our annotation budget."],
+    ["Prof. Chen", "Approved. Please keep inter-annotator agreement above 0.6 kappa, otherwise we need to revise the guidelines."],
+    ["Anna", "On the code-switching experiments, I'm blocked. The GPU cluster queue is about four days long right now."],
+    ["Prof. Chen", "I'll ask the department for priority access, we have a deadline argument. In the meantime run the small 1B model locally."],
+    ["Anna", "Okay. I also found that our tokenizer splits Vietnamese syllables badly, about 40 percent more tokens than for English."],
+    ["Prof. Chen", "That's actually an interesting finding. Write it up as a short analysis section, it strengthens the paper."],
+    ["Huy", "Should we also release the dataset?"],
+    ["Prof. Chen", "Yes, but check the license of the news sources first. Huy, find out by next Monday whether we can redistribute."],
+    ["Anna", "Who's writing the related work section?"],
+    ["Prof. Chen", "Anna drafts related work, Huy drafts experiments. First full draft due January 20th so we have time for internal review."]
+  ],
+  "key_points": [
+    {"point": "ACL deadline February 15", "keywords": [["acl", "deadline"], ["february 15", "feb 15", "15 february"]], "segments": [0]},
+    {"point": "Fine-tuned model beats baseline by 2.1 ROUGE-L on VLSP", "keywords": [["2.1"], ["rouge"]], "segments": [1]},
+    {"point": "Human eval: 3 annotators, 200 samples, ~$600, kappa > 0.6", "keywords": [["human eval", "annotator"], ["200", "600", "kappa"]], "segments": [2, 3, 4]},
+    {"point": "Anna blocked by 4-day GPU queue; ask for priority access, run 1B model locally", "keywords": [["gpu", "queue", "cluster"], ["priority", "1b", "locally"]], "segments": [5, 6]},
+    {"point": "Tokenizer uses ~40% more tokens for Vietnamese; write analysis section", "keywords": [["tokenizer", "token"], ["40"]], "segments": [7, 8]},
+    {"point": "Release dataset after checking news source licenses (Huy, by Monday)", "keywords": [["license", "licence"], ["dataset", "redistribut"]], "segments": [9, 10]},
+    {"point": "First full draft due January 20", "keywords": [["january 20", "jan 20", "20 january"]], "segments": [12]}
+  ],
+  "action_items": [
+    {"text": "Huy sets up human evaluation", "keywords": [["human eval", "annotat"]], "owner": "Huy"},
+    {"text": "Prof. Chen asks department for GPU priority access", "keywords": [["priority", "gpu"]], "owner": "Prof. Chen"},
+    {"text": "Anna writes tokenizer analysis section", "keywords": [["tokenizer", "analysis"]], "owner": "Anna"},
+    {"text": "Huy checks dataset license by Monday", "keywords": [["license", "licence"]], "owner": "Huy"},
+    {"text": "Anna drafts related work; Huy drafts experiments; draft by Jan 20", "keywords": [["related work", "draft"]], "owner": "Anna"}
+  ]
+}

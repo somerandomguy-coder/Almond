@@ -1,0 +1,39 @@
+{
+  "id": "vi-03-hiring",
+  "lang": "vi",
+  "title": "Họp tuyển dụng backend",
+  "date": "2026-11-13",
+  "segments": [
+    ["Anh Tuấn", "Mình cần tuyển thêm hai backend engineer trước cuối tháng 12, vì Q1 năm sau có dự án mới với đối tác Nhật."],
+    ["Chị Mai", "Hiện tại pipeline có 18 CV, em đã lọc còn 7 bạn phù hợp để phỏng vấn vòng một."],
+    ["Anh Tuấn", "Yêu cầu chính là Go hoặc Rust, có kinh nghiệm với PostgreSQL và Kafka, tối thiểu ba năm."],
+    ["Bảo", "Em nghĩ nên thêm bài test take-home, khoảng 4 tiếng, để đánh giá system design."],
+    ["Chị Mai", "Take-home 4 tiếng hơi dài, ứng viên senior hay bỏ ngang. Năm ngoái tỉ lệ hoàn thành chỉ khoảng 40%."],
+    ["Anh Tuấn", "Vậy rút xuống 2 tiếng, tập trung vào thiết kế API và xử lý concurrency."],
+    ["Bảo", "Ok, em sẽ viết lại đề bài take-home 2 tiếng, gửi anh review trước thứ Tư."],
+    ["Chị Mai", "Về lương, range cho senior backend bên mình đang là 45 đến 60 triệu gross. Thị trường giờ khoảng 50 đến 70."],
+    ["Anh Tuấn", "Mình xin nâng trần lên 65 triệu, anh sẽ trình chị giám đốc trong tuần này."],
+    ["Chị Mai", "Ngoài ra có bạn ứng viên tên Khoa, đang ở Đà Nẵng, muốn làm remote toàn thời gian."],
+    ["Anh Tuấn", "Remote full-time thì ok nếu bạn đó lên văn phòng Hà Nội một tuần mỗi quý."],
+    ["Bảo", "Lịch phỏng vấn thì em rảnh chiều thứ Ba và thứ Năm, mỗi buổi được ba ca."],
+    ["Chị Mai", "Vậy em sẽ xếp lịch phỏng vấn vòng một cho 7 bạn vào thứ Ba và thứ Năm tuần sau, gửi calendar invite cho mọi người."],
+    ["Anh Tuấn", "Ngoài ra mình nên đăng tin trên ITviec và TopDev nữa, chị Mai lo nhé. Budget đăng tin khoảng 15 triệu."],
+    ["Chị Mai", "Dạ, em đăng trong ngày mai luôn."]
+  ],
+  "key_points": [
+    {"point": "Tuyển 2 backend engineer trước cuối tháng 12 cho dự án với đối tác Nhật", "keywords": [["hai", "2"], ["tháng 12", "cuối năm"]], "segments": [0]},
+    {"point": "18 CV, lọc còn 7 bạn phỏng vấn vòng một", "keywords": [["7", "bảy"]], "segments": [1]},
+    {"point": "Yêu cầu Go/Rust, PostgreSQL, Kafka, tối thiểu 3 năm", "keywords": [["go", "rust"], ["kafka", "postgresql", "postgres"]], "segments": [2]},
+    {"point": "Take-home rút từ 4 xuống 2 tiếng; Bảo viết đề, gửi trước thứ Tư", "keywords": [["take-home", "take home", "bài test", "bài kiểm tra"], ["2 tiếng", "hai tiếng", "2 giờ"]], "segments": [3, 4, 5, 6]},
+    {"point": "Lương 45-60 triệu, xin nâng trần lên 65 triệu", "keywords": [["65"]], "segments": [7, 8]},
+    {"point": "Ứng viên Khoa ở Đà Nẵng làm remote, lên Hà Nội 1 tuần mỗi quý", "keywords": [["remote", "từ xa"], ["khoa", "đà nẵng"]], "segments": [9, 10]},
+    {"point": "Phỏng vấn vòng một thứ Ba và thứ Năm tuần sau", "keywords": [["thứ ba", "thứ 3"], ["thứ năm", "thứ 5"]], "segments": [11, 12]},
+    {"point": "Đăng tin ITviec và TopDev, budget 15 triệu", "keywords": [["itviec", "topdev"]], "segments": [13]}
+  ],
+  "action_items": [
+    {"text": "Bảo viết đề take-home 2 tiếng, gửi trước thứ Tư", "keywords": [["take-home", "take home", "đề", "bài test"]], "owner": "Bảo"},
+    {"text": "Anh Tuấn trình giám đốc nâng trần lương 65 triệu", "keywords": [["65", "lương", "giám đốc"]], "owner": "Anh Tuấn"},
+    {"text": "Chị Mai xếp lịch phỏng vấn và gửi calendar invite", "keywords": [["lịch", "phỏng vấn", "invite"]], "owner": "Chị Mai"},
+    {"text": "Chị Mai đăng tin trên ITviec/TopDev", "keywords": [["itviec", "topdev", "đăng tin"]], "owner": "Chị Mai"}
+  ]
+}
