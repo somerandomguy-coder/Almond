@@ -162,9 +162,9 @@ impl Speech {
     /// use).
     ///
     /// With several languages and a language-ID model this is an
-    /// [`almond_stt::live::LiveRouter`]: partials from each language's live model (language ID
-    /// per partial decode on the GPU), every final re-decoded by the language's offline model
-    /// after a language decision on the whole segment. Otherwise the primary language's live
+    /// [`almond_stt::live::LiveRouter`]: partials from the live model of the previous final's
+    /// language, every final re-decoded by the offline model of each part's language (language
+    /// decided per pause-separated part of the segment). Otherwise the primary language's live
     /// model, or any live-capable model if that one is missing.
     pub fn live(&self, languages: &[LangTag]) -> Result<Arc<dyn SttEngine>> {
         if let Some(o) = self.override_() {
@@ -198,9 +198,10 @@ impl Speech {
                 partial,
                 finals,
                 policy: Default::default(),
-                // Language ID on every partial decode costs a Whisper encoder pass per step:
-                // fine on the GPU, too slow with whisper-small on a laptop CPU.
-                lid_partials: self.device == DeviceClass::DesktopGpu,
+                // Partials follow the language of the previous final; language ID per partial
+                // decode made Vietnamese worse (17.9 % vs 13.4 % WER on the mixed test
+                // conversation, eval/stt/RESULTS.md) and costs an encoder pass per step.
+                lid_partials: false,
                 stream: Default::default(),
             }));
         }

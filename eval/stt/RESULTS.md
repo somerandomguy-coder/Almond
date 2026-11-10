@@ -1,6 +1,6 @@
 # STT evaluation — results and default models (WS-B)
 
-Measured 2026-11-09/10 on the dev PC: Windows 11, RTX 5060 Ti 16 GB, 12 logical CPUs, 31 GB RAM.
+Measured 2026-11-09/11 on the dev PC: Windows 11, RTX 5060 Ti 16 GB, 12 logical CPUs, 31 GB RAM.
 Everything here is reproducible with the scripts in this directory (see "Reproduce" at the end).
 Datasets are downloaded at run time into `~/.almond/eval/stt/` and are **not** committed.
 
@@ -8,7 +8,7 @@ Datasets are downloaded at run time into `~/.almond/eval/stt/` and are **not** c
 
 | Device class | Vietnamese (offline / post-meeting) | Vietnamese (live captions) | English (offline) | English (live) | Lang-ID | Diarization |
 |---|---|---|---|---|---|---|
-| **PC, 16 GB GPU** | `sherpa:zipformer-vi-30m-int8` *(PhoWhisper via whisper.cpp is broken, see GPU runs)* | `sherpa:zipformer-vi-30m-int8` | `whisper:large-v3-turbo` | `whisper:large-v3-turbo` (greedy) | `whisper:large-v3-turbo` | 3D-Speaker window embeddings + clustering (`diarize::FastDiarizer`, see Phase 2) |
+| **PC, 16 GB GPU** | `sherpa:zipformer-vi-30m-int8` *(PhoWhisper via whisper.cpp is broken, see GPU runs)* | `sherpa:zipformer-vi-30m-int8` partials, finals re-decoded per language (`live::LiveRouter`) | `whisper:large-v3-turbo` | `whisper:large-v3-turbo` (greedy partials, beam-5 finals) | `whisper:large-v3-turbo` + `langid::LidPolicy` (vi prior, short utterances follow context) | 3D-Speaker window embeddings + clustering (`diarize::FastDiarizer`, see Phase 2) |
 | **Fedora laptop, CPU** | `sherpa:zipformer-vi-30m-int8` | `sherpa:zipformer-vi-30m-int8` | `whisper:small` *(or offload to PC)* | `whisper:small` | `whisper:small` | same (RTF ≈ 0.15–0.25 on CPU) |
 | **Samsung A26** | `sherpa:zipformer-vi-30m-int8` | `sherpa:zipformer-vi-30m-int8` | offload to PC | — | — | offload to PC |
 
@@ -146,7 +146,9 @@ Same meeting, same scorer; GPU otherwise idle.
 emits a junk first word per utterance ("doctoral", "hashtag", "like" …) and its word timestamps run
 past the utterance (PhoWhisper was fine-tuned without timestamp tokens), so 1 678 words land
 outside any reference utterance. Until that is fixed (suppress the first token / use segment-level
-times), the PC default for Vietnamese is Zipformer-30M.
+times), the PC default for Vietnamese is Zipformer-30M. *(Fixed 2026-11-11: no-timestamp
+decoding, see "PhoWhisper through whisper.cpp: junk first token fixed"; Zipformer stays the
+default on accuracy.)*
 
 **Diarization is now ~80 % of the time.** It runs after transcription on CPU; running it concurrently
 with transcription and/or on the CUDA execution provider is the next speed-up.
@@ -159,6 +161,7 @@ processor in `almond-core` (`post_meeting_pass_30min`, ignored test, `--features
 | Config | WER vi | WER en | WER all | LID | "me" | Speaker (remote VI) | Time |
 |---|---:|---:|---:|---:|---:|---:|---|
 | vi Zipformer-30M, en + LID turbo (GPU), **fast diarizer concurrent** | **6.46 %** | **6.90 %** | **6.74 %** | 100 % | 100 % | **94.5 %** | mic 10 s, system 67 s, diarize 21 s in parallel → **77 s** (82 s incl. decode + model load), RTF 0.046 |
+| same + **LID policy, decode checks, hallucination filter** (2026-11-11, see "Vietnamese + English") | **6.27 %** | **6.75 %** | **6.64 %** | 100 % | 100 % | 94.5 % | mic 10 s, system 64 s, diarize 21 s → 74 s (203 s with the CPU busy compiling) |
 
 - Diarization: `almond_stt::diarize::FastDiarizer` (VAD windows of ~3 s, one 3D-Speaker
   embedding each, 4 parallel extractors, average-linkage clustering at cosine distance 0.6, small
@@ -196,6 +199,150 @@ Channel prior: mic utterances labelled "me": **100 %**; mic echo of system audio
 of headphones) is removed by time-overlap + text-similarity (`transcript::drop_echo`, unit-tested;
 not exercised by this synthetic set, which has no echo).
 
+## Vietnamese + English: language routing, hallucinations, live captions, code-switching (2026-11-11)
+
+Why: the user's first real test (speaking Vietnamese and English into a mic, sometimes in one
+sentence) routed most Vietnamese utterances to English, where Whisper hallucinated ("No, no, no,
+no, no.", "A40.", "Hmm."), and live captions were Vietnamese-only (English came out as garbled
+Vietnamese). Tools: `examples/lid_dump.rs` (Whisper LID probabilities and vi/en decode scores per
+clip, at crop lengths 0.5–3 s), `examples/lang_eval.rs` (test sets built from VIVOS + FLEURS-en,
+see its docs). All runs: RTX 5060 Ti, `--features cuda,sherpa`, GPU partly shared.
+
+### What Whisper LID does on real mic audio
+
+The two recordings from the user's test (47 mic utterances, 0.5–4 s, -40 to -55 dBFS, casual
+northern Vietnamese with some English) were run through `lid_dump --wav`: `whisper:large-v3-turbo`
+gives **p(vi) < 0.1 to 32 of the 47 utterances** (< 0.5 to 40), including clearly Vietnamese 1–3 s ones
+("MỌI NGƯỜI THẤY NÓ CÁI NÀY KHÔNG" p(vi) 0.01, "XONG RỒI XONG RỒI CHẮC LÀ…" 0.01, Zipformer's
+transcripts). Level normalization to -26 dBFS does not change this. On read speech it is fine:
+
+| LID accuracy per crop length (1 035 vi rows: VIVOS + FLEURS-vi; 599 en rows: FLEURS-en) | 0.5 s | 1 s | 1.5 s | 2 s | 3 s | whole |
+|---|---:|---:|---:|---:|---:|---:|
+| vi, raw argmax (old) | 58.3 | 89.8 | 98.9 | 99.4 | 100 | 100 |
+| vi, **policy** (new default) | **100** | **95.2** | **99.4** | 100 | 100 | 100 |
+| en, raw argmax (old) | 100 | 100 | 100 | 100 | 100 | 100 |
+| en, **policy** | 0 ¹ | 100 | 100 | 100 | 100 | 100 |
+
+¹ By design: below 400 ms an utterance's language comes from its neighbours / the prior.
+
+So the fix cannot rely on better LID probabilities; it has to (a) distrust them for short
+utterances and favour the meeting's primary language, and (b) check the result of decoding.
+
+### Language routing policy (`langid::LidPolicy`, `router::RoutedEngine`)
+
+* Viterbi over the meeting's utterances: prior 0.75 for the primary language (first of
+  `allowed_languages` = meeting language, else vi), LID log-probabilities weighted by duration
+  (0 below 0.4 s, full at 2 s), probabilities floored at 0.02, switching language costs 1 nat
+  decaying with the pause (e^-gap/3 s).
+* After decoding, each utterance of a secondary-language window is re-decoded with the primary
+  engine when Whisper kept nothing for it (all hallucination-filtered), when a segment's mean word
+  probability is < 0.55, or when it got fewer than 0.7 words per second of speech (Whisper told
+  "en" answered 7.7 s of Vietnamese with "oh"). The 0.55 is a trade-off: on the user's recordings
+  the misrouted Vietnamese that survived the policy decoded at 0.50–0.54 and their real English
+  at 0.60–0.75; on read FLEURS-en, 0.55 sends about 40 % of 1 s clips and 10 % of 1.5 s clips to
+  Zipformer (0.6: 47 % / 14 %), and none of the full sentences.
+Results:
+
+| Set | Old (argmax) | New (policy + checks) |
+|---|---|---|
+| User's recordings, mic, 47 utterances: routed to English | 15, ~10 of them Vietnamese judging by Zipformer / Whisper-vi output, decoded as "I'm going to go to the next one", "I'm going to go home", "Yes, my", "Bye bye", "in the retomary guide", "I'm not good. I'm not good.", "oh" (for 7.7 s of speech) | 10: the English "So what if I do with English right now?", "English, English.", "I have to use description." (probably "…captions / transcription"), the code-switched last sentence, fillers ("Hmm.", "Yeah.", "Hello.") and ~3 still Vietnamese ("All the time.", "I love you again.", "I'm going to use it, you know?") || Synthetic conversation, 60 utt (42 vi / 18 en, 20 of them 1–3-word clips 0.3–1.6 s) — LID long vi / long en | 28/28, 12/12 | 28/28, 12/12 |
+| same — LID short vi / short en | 8/14, 5/6 | 11/14, 2/6 |
+| same — WER vi / en | 10.8 % / 8.7 % | 11.9 % / 10.6 % |
+| `turbo-auto` (Whisper LID among all languages, decode with Whisper) — LID short vi | 5/14, WER vi 32 % | |
+
+On clean read speech the old argmax was already right, so the policy costs a little there
+(short English is now mostly sent to Zipformer); it is the real mic recordings where it matters.
+The synthetic set cannot reproduce Whisper's failure on real casual speech — the main limitation
+of these numbers.
+
+### Hallucination filter (`hallucination::reason`, whisper.cpp thresholds set explicitly)
+
+Drops a segment when: known outro phrase; no-speech > 0.6 with low confidence; ≥ 4 words with
+≤ 1/3 distinct ("No, no, no, no, no."); < 15 % of its audio voiced; ≤ 3 words with mean token
+log-prob < -1 ("A40.", "C40") or a filler ("hmm", "thank you", "cảm ơn" …) with log-prob < -0.5 /
+no-speech > 0.2. Word loops inside long segments are cut to two repetitions.
+
+| Whisper decodes | kept by old filter | kept by new filter |
+|---|---:|---:|
+| User's mic utterances decoded as English (the misrouting case), 47 | 47 | 30 |
+| same decoded as Vietnamese, 47 | 33 | 28 |
+| VIVOS, Vietnamese, 127 (correct speech) | 127 | 127 |
+| FLEURS-en, English, 100 (correct speech) | 100 | 100 |
+| VIVOS decoded as English, 127 | 127 | 124 |
+
+(Python port of the rules without the voiced-audio check; the Rust filter can only drop more.)
+What remains are confident *translations* (Vietnamese audio, English text) — the routing policy,
+not the filter, is the fix for those.
+
+### Live captions (`live::LiveRouter`)
+
+Partials still come from the fast model (Zipformer for Vietnamese; Whisper greedy after an English
+final), but every **final is re-decoded**: the segment's audio is split at 200 ms pauses, each part
+gets a language from the online policy (continuing from earlier finals), and each language run is
+decoded by that language's offline model (Zipformer / Whisper-turbo beam 5). Same `SttUpdate`
+protocol: the refined final replaces the partials of its index. Audio already covered by the
+previous final is not decoded again, and a repeated overlap with the previous final is dropped.
+
+The 60-utterance conversation (3:47 min) replayed in real time, GPU otherwise idle:
+
+| Config | first shown p50 / p90 | final p50 / p90 | WER vi | WER en | LID long vi / en ² |
+|---|---:|---:|---:|---:|---:|
+| Zipformer only (old default) | 0.31 / 1.49 s | 2.70 / 5.71 s | 17.9 % | 92.1 % | 28/28, 0/12 |
+| routed, LID on every partial | 0.45 / 3.34 s | 2.18 / 6.38 s | 17.9 % | 38.9 % | 25/28, 10/12 |
+| **routed, partials in the previous final's language (default)** | 0.51 / 2.86 s | 2.13 / 8.99 s | **13.4 %** | **37.4 %** | 28/28, 10/12 |
+
+² A final carries one language; a final that contains both languages counts its minority part as
+a LID miss, so live LID is understated.
+
+English live WER is still high (37 %): English partials are Zipformer gibberish whose word timing
+is useless for LocalAgreement's segmentation, so English finals are cut in odd places and lose
+words at the cuts; the offline pass afterwards gets English right (10.6 %). LID on every partial
+fixed some of that but broke Vietnamese segmentation, so it is off by default
+(`LiveRouter::lid_partials`).
+
+### Code-switching inside one utterance
+
+40 utterances, each a VIVOS clip and a FLEURS-en clip joined with a 0–150 ms gap (tight trims),
+alternating order; WER on the joined reference:
+
+| Config | WER all | first part | second part |
+|---|---:|---:|---:|
+| `zip` (Zipformer only) | 69.6 % | 70.6 % | 71.1 % |
+| `turbo-vi` (Whisper, language vi) | 30.1 % | 39.2 % | 27.9 % |
+| `turbo-auto` (Whisper LID per utterance) | 28.9 % | 47.0 % | 22.6 % |
+| `turbo-en` (Whisper, language en) | **18.2 %** | 26.8 % | 17.2 % |
+| **`routed` (default)** | 21.4 % | 31.4 % | 16.6 % |
+| `pho` (PhoWhisper-medium, no-timestamp mode) | 77.5 % | 85.2 % | 88.8 % |
+
+* Whisper-turbo keeps each language in its own script whatever language token it is given
+  ("Khi nhân viên cứu hộ… Giancarlo Fisicella lost control…"), so a code-switched sentence decoded
+  whole by Whisper reads well — but its Vietnamese is poor (20.7 % WER on VIVOS), which dominates
+  in a Vietnamese-first meeting.
+* The routed default splits at pauses ≥ 200 ms (most joins here); within one breath group it
+  sends everything to one engine, so a short English phrase inside Vietnamese comes out phonetic
+  from Zipformer ("LIVE STRANCIFT"). **Nothing measured is good at true intra-sentence switching**;
+  routed is the best default for Vietnamese-primary meetings, Whisper-turbo (any language token)
+  would be the choice for English-heavy mixing.
+* PhoWhisper-medium translates the English half into Vietnamese — unusable for mixed speech. With
+  `<|notimestamps|>` decoding (the fix for its junk first token, see below) its Vietnamese is
+  19.0 % WER on the conversation vs 11.9 % routed.
+
+### PhoWhisper through whisper.cpp: junk first token fixed
+
+PhoWhisper was fine-tuned without timestamp tokens; decoding it in timestamp mode produced the
+junk first word and the out-of-range word times measured in "GPU runs" above. `WhisperModel` now
+decodes PhoWhisper with `<|notimestamps|>` + one segment per VAD utterance and spreads word times
+over the utterance. VIVOS, first 150 utterances, same scorer:
+
+| Model | WER | CER | insertions | RTF |
+|---|---:|---:|---:|---:|
+| `whisper:phowhisper-medium`, whisper.cpp CUDA, beam 5, no-timestamps | 8.15 % | 4.77 % | 0 | 0.094 |
+| `sherpa:zipformer-vi-30m-int8`, CPU 4 threads | **7.15 %** | **3.80 %** | 1 | 0.020 |
+
+The junk word is gone (0 insertions), and PhoWhisper adds punctuation and casing, but it is still
+not more accurate than Zipformer-30M and it translates English into Vietnamese, so the routing
+default for Vietnamese stays Zipformer-30M.
+
 ## Not measured / blocked (exactly what is missing)
 
 1. **whisper.cpp with CUDA on Windows** — whisper.cpp + ggml-cuda itself compiles (needs MSVC
@@ -211,7 +358,8 @@ not exercised by this synthetic set, which has no echo).
    instead.
 4. **VI–EN code-switching LoRA** (PhoWhisper-large based) — not evaluated (depends on 2; also no
    public code-switching test set was found that is small and freely downloadable).
-5. **Real meetings / user recordings** — none available; `eval/stt/private/` (git-ignored) is
+5. **Real meetings / user recordings** — only the two short recordings of the user's first
+   test (47 mic utterances, no reference text; used qualitatively above, not committed); `eval/stt/private/` (git-ignored) is
    where they go; `prepare_data.py`-style manifest + `stt_eval` works on them.
 6. **Per-utterance whisper.cpp CPU WER table** (PhoWhisper-small/medium, whisper-small, turbo-q5
    via this crate) — WSL VM hung before the run; command:
@@ -241,6 +389,14 @@ python eval/stt/score_meeting.py transcript.json
 cargo run --release -p almond-stt --features sherpa --example diarize -- meeting_stereo.wav --channel 1 --out turns.json
 python eval/stt/score_diarization.py turns.json
 cargo run --release -p almond-stt --features sherpa --example live -- --model sherpa:zipformer-vi-30m-int8 clip.wav
+
+# Vietnamese + English (GPU; Windows: crates\almond-stt\scripts\cargo-cuda.cmd run ...)
+cargo run --release -p almond-stt --features cuda,sherpa --example lid_dump -- \
+    --manifest ~/.almond/eval/stt/vivos-test/manifest.jsonl --every 6 --crops 500:1000:1500:2000:3000:0 --decode
+cargo run --release -p almond-stt --features cuda,sherpa --example lid_dump -- --wav mic.wav   # per VAD region
+cargo run --release -p almond-stt --features cuda,sherpa --example lang_eval -- \
+    --sets conv:mixed:live --configs routed:routed-raw:zip:turbo-vi:turbo-en:turbo-auto:pho:live-zip:live-routed:live-routed-nolidpartials
+cargo run --release -p almond-stt --features cuda,sherpa --example transcribe -- mic.wav --vi sherpa:zipformer-vi-30m-int8 --no-diarize [--raw-lid]
 
 # GPU reference (transformers)
 python eval/stt/hf_eval.py --model vinai/PhoWhisper-medium --set vivos-test

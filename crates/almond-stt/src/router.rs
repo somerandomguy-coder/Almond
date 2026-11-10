@@ -68,7 +68,7 @@ pub struct RoutedEngine {
 }
 
 /// Default for [`RoutedEngine::verify_min_confidence`] (eval/stt/RESULTS.md).
-pub const VERIFY_MIN_CONFIDENCE: f32 = 0.4;
+pub const VERIFY_MIN_CONFIDENCE: f32 = 0.55;
 
 /// Fewer words than this (per 10 s of speech) in a secondary-language window means the
 /// decoder did not understand it (conversational English is ~25 words / 10 s).
@@ -259,10 +259,12 @@ impl SttEngine for RoutedEngine {
     }
 }
 
-/// Re-decode doubtful secondary-language segments with the primary engine (`redecode(audio,
-/// t_offset_ms)`): segments whose confidence is below `min_conf`, or the whole window when the
-/// secondary engine kept nothing (it dropped what it heard as a hallucination). `win` starts at
-/// absolute `base_ms`.
+/// Re-decode doubtful parts of a secondary-language window with the primary engine
+/// (`redecode(audio, t_offset_ms)`). The window is split into utterances (VAD); an utterance is
+/// doubtful when the secondary engine kept nothing for it (it dropped what it heard as a
+/// hallucination), when one of its segments has confidence below `min_conf`, or when it got far
+/// too few words for its length (Whisper told to expect English answered 7 s of Vietnamese with
+/// "oh"). `win` starts at absolute `base_ms`.
 async fn verify_segments<F, Fut>(
     segs: Vec<Segment>,
     win: &[f32],
@@ -274,53 +276,60 @@ where
     F: Fn(Vec<f32>, u64) -> Fut,
     Fut: std::future::Future<Output = Result<Vec<Segment>>>,
 {
-    if segs.is_empty() {
-        if has_speech(win) {
-            return redecode(win.to_vec(), base_ms).await;
-        }
+    let debug = std::env::var_os("ALMOND_STT_DEBUG").is_some();
+    let utts: Vec<(u64, u64)> = split_on_silence(win, &VadParams::default())
+        .into_iter()
+        .map(|(a, b)| (base_ms + samples_to_ms(a), base_ms + samples_to_ms(b)))
+        .collect();
+    if utts.is_empty() {
         return Ok(segs);
     }
-    // Far too few words for the speech in the window (Whisper told to expect English answered
-    // 7 s of Vietnamese with "oh"): the whole window goes to the primary engine.
-    let speech_ms: u64 = split_on_silence(win, &VadParams::default())
-        .iter()
-        .map(|(a, b)| samples_to_ms(b - a))
-        .sum();
-    let n_words: usize = segs.iter().map(|s| s.text.split_whitespace().count()).sum();
-    if speech_ms >= 1500 && (n_words as u64) * 1000 < speech_ms * MIN_WORDS_PER_10S / 10 {
-        if std::env::var_os("ALMOND_STT_DEBUG").is_some() {
-            eprintln!("[route] {n_words} words for {speech_ms} ms of speech -> primary engine");
-        }
-        return redecode(win.to_vec(), base_ms).await;
+    // each segment belongs to the utterance holding its midpoint (or the nearest one)
+    let mut groups: Vec<Vec<Segment>> = vec![vec![]; utts.len()];
+    for s in segs {
+        let mid = (s.t0_ms as u64 + s.t1_ms as u64) / 2;
+        let i = utts
+            .iter()
+            .position(|(a, b)| mid >= *a && mid < *b)
+            .unwrap_or_else(|| {
+                (0..utts.len())
+                    .min_by_key(|i| utts[*i].0.abs_diff(mid).min(utts[*i].1.abs_diff(mid)))
+                    .unwrap_or(0)
+            });
+        groups[i].push(s);
     }
-    let pad = 150u64;
     let win_end = base_ms + samples_to_ms(win.len());
     let mut out = vec![];
-    let mut last_end = base_ms;
-    for s in segs {
-        if s.confidence.is_some_and(|c| c >= min_conf) || s.confidence.is_none() {
-            last_end = last_end.max(s.t1_ms as u64);
-            out.push(s);
+    for (i, g) in groups.into_iter().enumerate() {
+        let (a, b) = utts[i];
+        let dur = b - a;
+        let n_words: usize = g.iter().map(|s| s.text.split_whitespace().count()).sum();
+        let low_conf = g.iter().any(|s| s.confidence.is_some_and(|c| c < min_conf));
+        let too_few = dur >= 1500 && (n_words as u64) * 10_000 < dur * MIN_WORDS_PER_10S;
+        let nothing = g.is_empty() && dur >= 500;
+        if !(low_conf || too_few || nothing) {
+            out.extend(g);
             continue;
         }
-        let a = (s.t0_ms as u64)
-            .saturating_sub(pad)
-            .max(base_ms)
-            .max(last_end);
-        let b = (s.t1_ms as u64 + pad).min(win_end);
-        if b <= a {
-            continue;
-        }
-        let x = &win[ms_to_samples(a - base_ms)..ms_to_samples(b - base_ms).min(win.len())];
-        if std::env::var_os("ALMOND_STT_DEBUG").is_some() {
+        if debug {
+            let text: Vec<&str> = g.iter().map(|s| s.text.as_str()).collect();
             eprintln!(
-                "[route] {}..{} ms: {:?} (conf {:?}) -> primary engine",
-                a, b, s.text, s.confidence
+                "[route] {a}..{b} ms {text:?} (low_conf {low_conf}, too_few {too_few}, nothing {nothing}) -> primary engine"
             );
         }
-        let r = redecode(x.to_vec(), a).await?;
-        last_end = b;
-        out.extend(r);
+        // the utterance's audio, up to the neighbours' boundaries
+        let lo = if i == 0 {
+            base_ms
+        } else {
+            utts[i - 1].1.max(a.saturating_sub(150))
+        };
+        let hi = if i + 1 == utts.len() {
+            win_end
+        } else {
+            utts[i + 1].0.min(b + 150)
+        };
+        let x = &win[ms_to_samples(lo - base_ms)..ms_to_samples(hi - base_ms).min(win.len())];
+        out.extend(redecode(x.to_vec(), lo).await?);
     }
     Ok(out)
 }

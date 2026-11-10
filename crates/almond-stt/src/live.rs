@@ -313,6 +313,17 @@ impl SegmentRefiner for RoutedRefiner {
             .map(|e| e.saturating_sub(audio_t0_ms))
             .unwrap_or(0);
         let skip = ms_to_samples(skip_ms).min(audio.len());
+        if std::env::var_os("ALMOND_STT_DEBUG").is_some() {
+            eprintln!(
+                "[live] refine seg {}..{} {:?}: audio {}..{} ms, prev_end {:?}",
+                seg.t0_ms,
+                seg.t1_ms,
+                seg.text,
+                audio_t0_ms,
+                audio_t0_ms + samples_to_ms(audio.len()),
+                self.prev_end
+            );
+        }
         let (audio, t0) = (&audio[skip..], audio_t0_ms + samples_to_ms(skip));
         let fallback = seg.lang.clone().unwrap_or_else(|| self.langs[0].clone());
         if audio.len() < ms_to_samples(200) {

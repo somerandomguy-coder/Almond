@@ -186,8 +186,14 @@ mod tests {
     fn live_languages_put_the_meeting_language_first() {
         let codes = |v: Vec<LangTag>| v.into_iter().map(|l| l.0).collect::<Vec<_>>();
         assert_eq!(codes(live_languages(&LangTag::vi())), ["vi", "en"]);
-        assert_eq!(codes(live_languages(&LangTag("en-US".into()))), ["en", "vi"]);
-        assert_eq!(codes(live_languages(&LangTag("zh".into()))), ["zh", "vi", "en"]);
+        assert_eq!(
+            codes(live_languages(&LangTag("en-US".into()))),
+            ["en", "vi"]
+        );
+        assert_eq!(
+            codes(live_languages(&LangTag("zh".into()))),
+            ["zh", "vi", "en"]
+        );
     }
 
     #[test]
