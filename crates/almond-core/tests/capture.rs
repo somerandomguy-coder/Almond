@@ -522,9 +522,18 @@ async fn real_devices_10s() {
     let m = meeting(&api, &mid);
     eprintln!("{n} status notifications; max meter level per channel: {max:?}");
     for t in &m.audio {
+        let p = api.core.blobs().path(&t.blob).unwrap().unwrap();
+        let x = almond_audio::recorder::decode_track(&p, almond_audio::Codec::Opus).unwrap();
+        let zeros = x.iter().filter(|s| **s == 0.0).count() as f64 / x.len().max(1) as f64;
         eprintln!(
-            "track {:?}: {} ms, {} (offset {} ms)",
-            t.channel, t.duration_ms, t.codec, t.offset_ms
+            "track {:?}: {} ms, {} (offset {} ms), RMS {:.1} dBFS, peak {:.1} dBFS, {:.0}% exact zeros",
+            t.channel,
+            t.duration_ms,
+            t.codec,
+            t.offset_ms,
+            almond_audio::level::rms_dbfs(&x),
+            almond_audio::level::peak_dbfs(&x),
+            zeros * 100.0
         );
     }
     assert!(!m.audio.is_empty());

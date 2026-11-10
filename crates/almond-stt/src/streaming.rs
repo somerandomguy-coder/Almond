@@ -118,6 +118,8 @@ pub struct LocalAgreement<D: ChunkDecoder> {
     prev_hyp: Vec<AbsWord>,
     seg_words: Vec<AbsWord>,
     seg_idx: u32,
+    /// Last committed word: a re-decode may return it again with a later end time.
+    last_committed: Option<AbsWord>,
     lang: Option<LangTag>,
     /// Tail of finalized text, used as decoding context.
     context: String,
@@ -136,6 +138,7 @@ impl<D: ChunkDecoder> LocalAgreement<D> {
             prev_hyp: vec![],
             seg_words: vec![],
             seg_idx: 0,
+            last_committed: None,
             lang: None,
             context: String::new(),
         }
@@ -211,7 +214,7 @@ impl<D: ChunkDecoder> LocalAgreement<D> {
         if res.lang.is_some() {
             self.lang = res.lang.clone();
         }
-        let hyp: Vec<AbsWord> = res
+        let mut hyp: Vec<AbsWord> = res
             .words
             .into_iter()
             .map(|w| AbsWord {
@@ -224,6 +227,15 @@ impl<D: ChunkDecoder> LocalAgreement<D> {
             .filter(|w| w.t1 > self.committed_upto + 40 || w.t0 >= self.committed_upto)
             .filter(|w| !key(&w.text).is_empty() || !w.text.trim().is_empty())
             .collect();
+        // The last committed word decoded again: engines whose word ends run to the next token
+        // (or the buffer end, e.g. Zipformer) report it with a later end, so the time filter
+        // above keeps it. It starts before the commit point and repeats the committed text.
+        if let (Some(lc), Some(first)) = (&self.last_committed, hyp.first())
+            && first.t0 < self.committed_upto
+            && key(&first.text) == key(&lc.text)
+        {
+            hyp.remove(0);
+        }
 
         let n_agree = if flush {
             hyp.len()
@@ -247,6 +259,7 @@ impl<D: ChunkDecoder> LocalAgreement<D> {
                 out.push(self.finalize());
             }
             self.committed_upto = self.committed_upto.max(w.t1);
+            self.last_committed = Some(w.clone());
             let end_here = ends_sentence(&w.text);
             self.seg_words.push(w);
             let seg_len = self.seg_len();
@@ -295,6 +308,7 @@ impl<D: ChunkDecoder> LocalAgreement<D> {
         let t = std::mem::take(&mut self.prev_hyp);
         for w in t {
             self.committed_upto = self.committed_upto.max(w.t1);
+            self.last_committed = Some(w.clone());
             self.seg_words.push(w);
         }
     }
@@ -440,6 +454,8 @@ mod tests {
         total_ms: u64,
         seen_last: Option<usize>,
         calls: usize,
+        /// Report the last heard word as ending at the buffer end (Zipformer-style timestamps).
+        stretch_last: bool,
     }
 
     impl ChunkDecoder for Script {
@@ -460,6 +476,11 @@ mod tests {
                     });
                     last_idx = Some(i);
                 }
+            }
+            if self.stretch_last
+                && let Some(w) = words.last_mut()
+            {
+                w.t1_ms = buf_ms;
             }
             if let Some(li) = last_idx
                 && self.seen_last != Some(li)
@@ -482,12 +503,17 @@ mod tests {
     }
 
     fn run_script(words: Vec<&'static str>, total_ms: u64) -> Vec<SttUpdate> {
+        run_script_with(words, total_ms, false)
+    }
+
+    fn run_script_with(words: Vec<&'static str>, total_ms: u64, stretch: bool) -> Vec<SttUpdate> {
         let mut la = LocalAgreement::new(
             Script {
                 words,
                 total_ms: 0,
                 seen_last: None,
                 calls: 0,
+                stretch_last: stretch,
             },
             StreamConfig {
                 step_ms: 500,
@@ -539,6 +565,19 @@ mod tests {
     }
 
     #[test]
+    fn stretched_word_ends_do_not_repeat_the_last_word() {
+        let script = vec!["nhung", "rung", "dong", "yeu", "thuong"];
+        let ups = run_script_with(script.clone(), 5 * 400 + 900, true);
+        let text = ups
+            .iter()
+            .filter(|u| u.is_final)
+            .map(|u| u.segment.text.as_str())
+            .collect::<Vec<_>>()
+            .join(" ");
+        assert_eq!(text, script.join(" "));
+    }
+
+    #[test]
     fn silence_produces_nothing_and_skips_decoder() {
         let mut la = LocalAgreement::new(
             Script {
@@ -546,6 +585,7 @@ mod tests {
                 total_ms: 0,
                 seen_last: None,
                 calls: 0,
+                stretch_last: false,
             },
             StreamConfig::default(),
         );
@@ -569,6 +609,7 @@ mod tests {
                 total_ms: 0,
                 seen_last: None,
                 calls: 0,
+                stretch_last: false,
             },
             StreamConfig::default(),
         );

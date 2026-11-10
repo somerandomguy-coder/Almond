@@ -249,12 +249,23 @@ impl Processor for TranscribeLocal {
             ?timings,
             "transcribed"
         );
-        (ctx.progress)(0.98, "saving transcript");
+        (ctx.progress)(
+            0.98,
+            &format!(
+                "saving transcript (transcribed mic {:.0} s, system {:.0} s, mixed {:.0} s; \
+                 diarized in parallel {:.0} s; total {:.0} s)",
+                timings.transcribe_mic_ms as f64 / 1000.0,
+                timings.transcribe_system_ms as f64 / 1000.0,
+                timings.transcribe_mixed_ms as f64 / 1000.0,
+                timings.diarize_ms as f64 / 1000.0,
+                timings.total_ms as f64 / 1000.0
+            ),
+        );
         let model = format!(
             "{}{}",
             setup.models,
             if diarizer.is_some() {
-                ",diarize=sherpa:pyannote-seg-3.0+sherpa:3dspeaker-eres2net-base"
+                ",diarize=sherpa:3dspeaker-eres2net-base(fast)"
             } else {
                 ""
             }

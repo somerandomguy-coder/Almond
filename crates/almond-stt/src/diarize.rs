@@ -356,7 +356,8 @@ mod tests {
         (0..ms_to_samples(ms))
             .map(|i| {
                 let t = i as f32 / 16_000.0;
-                0.2 * (0.55 + 0.45 * (4.0 * t * 6.28).sin()) * (6.28 * f * t).sin()
+                0.2 * (0.55 + 0.45 * (4.0 * t * std::f32::consts::TAU).sin())
+                    * (std::f32::consts::TAU * f * t).sin()
             })
             .collect()
     }
