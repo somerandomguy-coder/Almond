@@ -190,7 +190,10 @@ impl WhisperModel {
         beam_size: i32,
     ) -> Result<ScoredText> {
         let raw = self.decode_window(state, samples, lang, None, beam_size)?;
-        let lps: Vec<f32> = raw.iter().flat_map(|r| r.logprobs.iter().copied()).collect();
+        let lps: Vec<f32> = raw
+            .iter()
+            .flat_map(|r| r.logprobs.iter().copied())
+            .collect();
         let ps: Vec<f32> = raw
             .iter()
             .flat_map(|r| r.words.iter().filter_map(|w| w.p))
@@ -436,7 +439,10 @@ impl WhisperModel {
 
 /// Word times proportional to word length between `t0` and `t1` (no timestamps decoded).
 fn spread_word_times(words: &mut [HypWord], t0: u64, t1: u64) {
-    let total: usize = words.iter().map(|w| w.text.trim().chars().count().max(1)).sum();
+    let total: usize = words
+        .iter()
+        .map(|w| w.text.trim().chars().count().max(1))
+        .sum();
     let span = t1.saturating_sub(t0) as f64;
     let mut acc = 0usize;
     for w in words.iter_mut() {
@@ -470,7 +476,6 @@ pub struct ScoredText {
     pub no_speech_p: f32,
     pub n_tokens: usize,
 }
-
 
 /// Apply [`collapse_repeats`] and [`hallucination`] to decoded segments.
 fn clean_segments(raw: Vec<RawSegment>, audio: &[f32]) -> Vec<RawSegment> {

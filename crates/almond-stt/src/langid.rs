@@ -162,7 +162,9 @@ pub fn decide(obs: &[LidObs], langs: &[LangTag], p: &LidPolicy) -> Vec<LangTag> 
         score = next;
         back.push(bp);
     }
-    let mut best = (0..k).max_by(|a, b| score[*a].total_cmp(&score[*b])).unwrap_or(0);
+    let mut best = (0..k)
+        .max_by(|a, b| score[*a].total_cmp(&score[*b]))
+        .unwrap_or(0);
     let mut path = vec![0; obs.len()];
     for t in (0..obs.len()).rev() {
         path[t] = best;
@@ -213,7 +215,13 @@ impl OnlineLid {
         }
         let e = self.policy.emission(&self.langs, o);
         let sw = self.policy.switch_cost(o.gap_ms);
-        let s = |j: usize| e[j] - if self.prev.is_some_and(|p| p != j) { sw } else { 0.0 };
+        let s = |j: usize| {
+            e[j] - if self.prev.is_some_and(|p| p != j) {
+                sw
+            } else {
+                0.0
+            }
+        };
         (0..self.langs.len()).max_by(|a, b| s(*a).total_cmp(&s(*b)))
     }
 }
@@ -281,6 +289,9 @@ mod tests {
         let got: Vec<LangTag> = seq.iter().map(|x| on.commit(x).unwrap()).collect();
         assert_eq!(on.current(), Some(LangTag::en()));
         assert_eq!(codes(&got), ["vi", "vi", "en"]);
-        assert_eq!(codes(&decide(&seq, &langs(), &LidPolicy::default())), ["vi", "vi", "en"]);
+        assert_eq!(
+            codes(&decide(&seq, &langs(), &LidPolicy::default())),
+            ["vi", "vi", "en"]
+        );
     }
 }

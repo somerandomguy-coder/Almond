@@ -303,7 +303,10 @@ where
             out.push(s);
             continue;
         }
-        let a = (s.t0_ms as u64).saturating_sub(pad).max(base_ms).max(last_end);
+        let a = (s.t0_ms as u64)
+            .saturating_sub(pad)
+            .max(base_ms)
+            .max(last_end);
         let b = (s.t1_ms as u64 + pad).min(win_end);
         if b <= a {
             continue;
@@ -567,7 +570,8 @@ mod tests {
     fn vi_en(lid: f32, en_conf: f32) -> RoutedEngine {
         let mut engines: BTreeMap<String, Arc<dyn SttEngine>> = BTreeMap::new();
         engines.insert("vi".into(), Arc::new(Fixed("xin chào", 0.9)));
-        let en: Arc<dyn SttEngine> = Arc::new(Fixed("hello there how are you doing today", en_conf));
+        let en: Arc<dyn SttEngine> =
+            Arc::new(Fixed("hello there how are you doing today", en_conf));
         engines.insert("en".into(), en.clone());
         RoutedEngine::new(Arc::new(EnLid(lid)), engines, en)
     }

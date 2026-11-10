@@ -53,7 +53,10 @@ struct Utt {
 struct Rng(u64);
 impl Rng {
     fn next(&mut self) -> u64 {
-        self.0 = self.0.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+        self.0 = self
+            .0
+            .wrapping_mul(6364136223846793005)
+            .wrapping_add(1442695040888963407);
         self.0 >> 33
     }
     fn range(&mut self, a: u64, b: u64) -> u64 {
@@ -114,7 +117,9 @@ async fn shorts(
         if out.len() >= want {
             break;
         }
-        let x = level(&trim(&load_wav_16k_mono(r["audio"].as_str().unwrap()).unwrap()));
+        let x = level(&trim(
+            &load_wav_16k_mono(r["audio"].as_str().unwrap()).unwrap(),
+        ));
         let o = SttOptions {
             language: Some(LangTag(lang.into())),
             word_timestamps: true,
@@ -123,11 +128,18 @@ async fn shorts(
         let Ok(segs) = e.transcribe(&x, 0, AudioChannel::Mixed, &o).await else {
             continue;
         };
-        let hyp: String = segs.iter().map(|s| s.text.as_str()).collect::<Vec<_>>().join(" ");
+        let hyp: String = segs
+            .iter()
+            .map(|s| s.text.as_str())
+            .collect::<Vec<_>>()
+            .join(" ");
         if normalize(&hyp) != normalize(r["text"].as_str().unwrap()) {
             continue;
         }
-        let words: Vec<_> = segs.iter().flat_map(|s| s.words.clone().unwrap_or_default()).collect();
+        let words: Vec<_> = segs
+            .iter()
+            .flat_map(|s| s.words.clone().unwrap_or_default())
+            .collect();
         let n = rng.range(1, 4) as usize;
         if words.len() <= n + 1 {
             continue;
@@ -136,7 +148,11 @@ async fn shorts(
         let next_t0 = words[n].t0_ms as u64;
         let end = (words[n - 1].t1_ms as u64 + 120).min(next_t0.max(words[n - 1].t1_ms as u64));
         let end = ms_to_samples(end.max(300)).min(x.len());
-        let text = words[..n].iter().map(|w| w.text.as_str()).collect::<Vec<_>>().join(" ");
+        let text = words[..n]
+            .iter()
+            .map(|w| w.text.as_str())
+            .collect::<Vec<_>>()
+            .join(" ");
         out.push(Utt {
             audio: x[..end].to_vec(),
             text,
@@ -150,7 +166,9 @@ async fn shorts(
 fn full(rows: &[Value], lang: &'static str) -> Vec<Utt> {
     rows.iter()
         .map(|r| Utt {
-            audio: level(&trim(&load_wav_16k_mono(r["audio"].as_str().unwrap()).unwrap())),
+            audio: level(&trim(
+                &load_wav_16k_mono(r["audio"].as_str().unwrap()).unwrap(),
+            )),
             text: r["text"].as_str().unwrap().to_string(),
             lang,
             short: false,
@@ -217,7 +235,8 @@ impl Score {
         }
         for (k, (ok, n)) in &self.lid_ok {
             o[format!("lid_{k}")] = json!(format!("{ok}/{n}"));
-            o[format!("lid_{k}_pct")] = json!((*ok as f64 * 1000.0 / (*n).max(1) as f64).round() / 10.0);
+            o[format!("lid_{k}_pct")] =
+                json!((*ok as f64 * 1000.0 / (*n).max(1) as f64).round() / 10.0);
         }
         o["extra_words_outside_refs"] = json!(self.halluc);
         o
@@ -232,7 +251,11 @@ fn timed_words(segs: &[Segment]) -> Vec<(u64, String, String)> {
         match &s.words {
             Some(ws) if !ws.is_empty() => {
                 for w in ws {
-                    v.push(((w.t0_ms as u64 + w.t1_ms as u64) / 2, w.text.clone(), l.clone()));
+                    v.push((
+                        (w.t0_ms as u64 + w.t1_ms as u64) / 2,
+                        w.text.clone(),
+                        l.clone(),
+                    ));
                 }
             }
             _ => {
@@ -240,7 +263,11 @@ fn timed_words(segs: &[Segment]) -> Vec<(u64, String, String)> {
                 let ws: Vec<&str> = s.text.split_whitespace().collect();
                 let d = (s.t1_ms - s.t0_ms) as u64 / ws.len().max(1) as u64;
                 for (i, w) in ws.iter().enumerate() {
-                    v.push((s.t0_ms as u64 + d * i as u64 + d / 2, w.to_string(), l.clone()));
+                    v.push((
+                        s.t0_ms as u64 + d * i as u64 + d / 2,
+                        w.to_string(),
+                        l.clone(),
+                    ));
                 }
             }
         }
@@ -262,8 +289,15 @@ fn score_conv(segs: &[Segment], refs: &[RefUtt]) -> Score {
                 *langs.entry(l.clone()).or_default() += 1;
             }
         }
-        sc.wer.entry(r.lang).or_default().add(wer_counts(&r.text, &hyp.join(" ")));
-        let got = langs.iter().max_by_key(|x| x.1).map(|x| x.0.clone()).unwrap_or_default();
+        sc.wer
+            .entry(r.lang)
+            .or_default()
+            .add(wer_counts(&r.text, &hyp.join(" ")));
+        let got = langs
+            .iter()
+            .max_by_key(|x| x.1)
+            .map(|x| x.0.clone())
+            .unwrap_or_default();
         let key = format!("{}_{}", r.lang, if r.short { "short" } else { "long" });
         let e = sc.lid_ok.entry(key).or_default();
         e.1 += 1;
@@ -309,9 +343,18 @@ fn offline(m: &Models, name: &str) -> Option<(Arc<dyn SttEngine>, SttOptions)> {
         ..Default::default()
     };
     Some(match name {
-        "routed" => (Arc::new(routed(m, LidPolicy::default(), true)) as _, o(None, vien())),
-        "routed-noverify" => (Arc::new(routed(m, LidPolicy::default(), false)) as _, o(None, vien())),
-        "routed-raw" => (Arc::new(routed(m, LidPolicy::raw(), false)) as _, o(None, vien())),
+        "routed" => (
+            Arc::new(routed(m, LidPolicy::default(), true)) as _,
+            o(None, vien()),
+        ),
+        "routed-noverify" => (
+            Arc::new(routed(m, LidPolicy::default(), false)) as _,
+            o(None, vien()),
+        ),
+        "routed-raw" => (
+            Arc::new(routed(m, LidPolicy::raw(), false)) as _,
+            o(None, vien()),
+        ),
         "zip" => (m.zip.clone() as _, o(Some("vi"), vec![])),
         "turbo-vi" => (m.turbo.clone() as _, o(Some("vi"), vec![])),
         "turbo-en" => (m.turbo.clone() as _, o(Some("en"), vec![])),
@@ -324,10 +367,12 @@ fn offline(m: &Models, name: &str) -> Option<(Arc<dyn SttEngine>, SttOptions)> {
 
 fn pct(v: &mut [f64], p: f64) -> f64 {
     v.sort_by(|a, b| a.total_cmp(b));
-    v.get(((v.len() as f64 - 1.0) * p).round() as usize).copied().unwrap_or(f64::NAN)
+    v.get(((v.len() as f64 - 1.0) * p).round() as usize)
+        .copied()
+        .unwrap_or(f64::NAN)
 }
 
-async fn run_live(engine: &dyn SttEngine, x: &[f32], refs: &[RefUtt]) -> Value {
+async fn run_live(engine: &dyn SttEngine, x: &[f32], refs: &[RefUtt]) -> (Value, Vec<Segment>) {
     let mut s = engine
         .start_stream(SttOptions {
             allowed_languages: vien(),
@@ -373,13 +418,14 @@ async fn run_live(engine: &dyn SttEngine, x: &[f32], refs: &[RefUtt]) -> Value {
     o["final_ms_p90"] = json!(pct(&mut fin, 0.9).round());
     o["finals"] = json!(finals.len());
     o["wall_s"] = json!(start.elapsed().as_secs_f64());
-    o
+    (o, finals)
 }
 
 #[tokio::main(flavor = "multi_thread")]
 async fn main() {
     let mut sets = "conv,mixed".to_string();
-    let mut configs = "routed,routed-raw,routed-noverify,zip,turbo-vi,turbo-auto,turbo-vien".to_string();
+    let mut configs =
+        "routed,routed-raw,routed-noverify,zip,turbo-vi,turbo-auto,turbo-vien".to_string();
     let mut n = 60usize;
     let mut dump: Option<String> = None;
     let mut args = std::env::args().skip(1);
@@ -394,10 +440,12 @@ async fn main() {
     }
     let mgr = ModelManager::open_default().unwrap();
     let turbo_model = Arc::new(
-        WhisperModel::from_manager(&mgr, "whisper:large-v3-turbo", WhisperConfig::default()).unwrap(),
+        WhisperModel::from_manager(&mgr, "whisper:large-v3-turbo", WhisperConfig::default())
+            .unwrap(),
     );
     let zipm = Arc::new(
-        ZipformerModel::from_manager(&mgr, "sherpa:zipformer-vi-30m-int8", Default::default()).unwrap(),
+        ZipformerModel::from_manager(&mgr, "sherpa:zipformer-vi-30m-int8", Default::default())
+            .unwrap(),
     );
     let pho = configs.contains("pho").then(|| {
         Arc::new(WhisperEngine::new(Arc::new(
@@ -412,7 +460,11 @@ async fn main() {
         pho,
     };
 
-    let dir = almond_stt::models::default_models_dir().parent().unwrap().join("eval").join("stt");
+    let dir = almond_stt::models::default_models_dir()
+        .parent()
+        .unwrap()
+        .join("eval")
+        .join("stt");
     let vivos = manifest(&dir.join("vivos-test/manifest.jsonl"), 7, 1000);
     let fen = manifest(&dir.join("fleurs-en/manifest.jsonl"), 1, 1000);
     let mut rng = Rng(42);
@@ -439,7 +491,11 @@ async fn main() {
             .iter()
             .map(|r| json!({"t0": r.t0, "t1": r.t1, "lang": r.lang, "short": r.short, "text": r.text}))
             .collect();
-        std::fs::write(format!("{p}.conv.json"), serde_json::to_string_pretty(&r).unwrap()).unwrap();
+        std::fs::write(
+            format!("{p}.conv.json"),
+            serde_json::to_string_pretty(&r).unwrap(),
+        )
+        .unwrap();
     }
 
     // mixed: vi clip + 0-150 ms + en clip (and the reverse), one utterance each
@@ -448,8 +504,14 @@ async fn main() {
         let v = &vivos[(n + i * 3) % vivos.len()];
         let e = &fen[(n + i * 2) % fen.len()];
         // tight trims: the join must not leave a pause the VAD could split at
-        let xv = level(&trim_pad(&load_wav_16k_mono(v["audio"].as_str().unwrap()).unwrap(), 30));
-        let xe = level(&trim_pad(&load_wav_16k_mono(e["audio"].as_str().unwrap()).unwrap(), 30));
+        let xv = level(&trim_pad(
+            &load_wav_16k_mono(v["audio"].as_str().unwrap()).unwrap(),
+            30,
+        ));
+        let xe = level(&trim_pad(
+            &load_wav_16k_mono(e["audio"].as_str().unwrap()).unwrap(),
+            30,
+        ));
         let gap = vec![0.0f32; ms_to_samples(rng.range(0, 150))];
         let (tv, te) = (v["text"].as_str().unwrap(), e["text"].as_str().unwrap());
         let mut x = vec![0.0f32; ms_to_samples(300)];
@@ -473,7 +535,9 @@ async fn main() {
             let mut out = json!({"set": set, "config": c});
             match set {
                 "conv" => {
-                    let Some((e, o)) = offline(&m, c) else { continue };
+                    let Some((e, o)) = offline(&m, c) else {
+                        continue;
+                    };
                     let segs = e.transcribe(&conv, 0, AudioChannel::Mic, &o).await.unwrap();
                     let sc = score_conv(&segs, &refs);
                     for (k, v) in sc.json().as_object().unwrap() {
@@ -488,19 +552,30 @@ async fn main() {
                     }
                 }
                 "mixed" => {
-                    let Some((e, o)) = offline(&m, c) else { continue };
-                    let (mut all, mut pa, mut pb) =
-                        (EditCounts::default(), EditCounts::default(), EditCounts::default());
+                    let Some((e, o)) = offline(&m, c) else {
+                        continue;
+                    };
+                    let (mut all, mut pa, mut pb) = (
+                        EditCounts::default(),
+                        EditCounts::default(),
+                        EditCounts::default(),
+                    );
                     let mut samples = vec![];
                     for (x, ta, tb, boundary) in &mixed {
                         let segs = e.transcribe(x, 0, AudioChannel::Mic, &o).await.unwrap();
                         let ws = timed_words(&segs);
                         let hyp: Vec<&str> = ws.iter().map(|w| w.1.as_str()).collect();
                         all.add(wer_counts(&format!("{ta} {tb}"), &hyp.join(" ")));
-                        let ha: Vec<&str> =
-                            ws.iter().filter(|w| w.0 < *boundary).map(|w| w.1.as_str()).collect();
-                        let hb: Vec<&str> =
-                            ws.iter().filter(|w| w.0 >= *boundary).map(|w| w.1.as_str()).collect();
+                        let ha: Vec<&str> = ws
+                            .iter()
+                            .filter(|w| w.0 < *boundary)
+                            .map(|w| w.1.as_str())
+                            .collect();
+                        let hb: Vec<&str> = ws
+                            .iter()
+                            .filter(|w| w.0 >= *boundary)
+                            .map(|w| w.1.as_str())
+                            .collect();
                         pa.add(wer_counts(ta, &ha.join(" ")));
                         pb.add(wer_counts(tb, &hb.join(" ")));
                         if samples.len() < 4 {
@@ -537,7 +612,14 @@ async fn main() {
                         }
                         _ => continue,
                     };
-                    let r = run_live(engine.as_ref(), &conv, &refs).await;
+                    let (r, finals) = run_live(engine.as_ref(), &conv, &refs).await;
+                    if let Some(p) = &dump {
+                        std::fs::write(
+                            format!("{p}.conv.{c}.json"),
+                            serde_json::to_string_pretty(&finals).unwrap(),
+                        )
+                        .unwrap();
+                    }
                     for (k, v) in r.as_object().unwrap() {
                         out[k] = v.clone();
                     }

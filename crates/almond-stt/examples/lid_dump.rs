@@ -9,7 +9,9 @@
 //! cargo-cuda.cmd run ... --example lid_dump -- --wav mic.wav [--channel 0]
 //! ```
 
-use almond_stt::audio::{VadParams, load_wav_channels, resample_linear, samples_to_ms, split_on_silence};
+use almond_stt::audio::{
+    VadParams, load_wav_channels, resample_linear, samples_to_ms, split_on_silence,
+};
 use almond_stt::models::ModelManager;
 use almond_stt::whisper::{WhisperConfig, WhisperModel};
 use almond_types::LangTag;

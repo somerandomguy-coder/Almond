@@ -25,8 +25,31 @@ pub const KNOWN_PHRASES: &[&str] = &[
 /// Short outputs Whisper produces for noise, breathing or speech in another language ("Hmm.",
 /// "Thank you.", "You"): dropped unless decoded confidently over mostly voiced audio.
 pub const SUSPECT_SHORT: &[&str] = &[
-    "hmm", "hm", "mm", "um", "uh", "ah", "oh", "you", "thank you", "thanks", "bye", "bye bye",
-    "so", "okay", "ok", "yeah", "the", "i", "a", "và", "ừ", "à", "ờ", "dạ", "cảm ơn",
+    "hmm",
+    "hm",
+    "mm",
+    "um",
+    "uh",
+    "ah",
+    "oh",
+    "you",
+    "thank you",
+    "thanks",
+    "bye",
+    "bye bye",
+    "so",
+    "okay",
+    "ok",
+    "yeah",
+    "the",
+    "i",
+    "a",
+    "và",
+    "ừ",
+    "à",
+    "ờ",
+    "dạ",
+    "cảm ơn",
 ];
 
 /// What a decoder reported for one segment.
@@ -51,7 +74,10 @@ pub fn reason(s: &SegmentScore, audio: &[f32]) -> Option<&'static str> {
     if n.is_empty() {
         return Some("empty");
     }
-    if KNOWN_PHRASES.iter().any(|h| n.contains(normalize(h).trim())) {
+    if KNOWN_PHRASES
+        .iter()
+        .any(|h| n.contains(normalize(h).trim()))
+    {
         return Some("known phrase");
     }
     let lp = s.avg_logprob;
@@ -178,7 +204,10 @@ mod tests {
     fn real_speech_is_kept() {
         let a = voice(3000);
         assert_eq!(
-            reason(&score("So what if I do with English right now?", 0, 3000, -0.3), &a),
+            reason(
+                &score("So what if I do with English right now?", 0, 3000, -0.3),
+                &a
+            ),
             None
         );
         assert_eq!(reason(&score("Okay.", 0, 600, -0.1), &a), None);

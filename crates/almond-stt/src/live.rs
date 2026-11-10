@@ -12,6 +12,7 @@
 //!
 //! The `SttUpdate` protocol is unchanged (the refined final replaces the partials of its idx).
 
+use crate::audio::{ms_to_samples, samples_to_ms};
 use crate::langid::{LidObs, LidPolicy, OnlineLid};
 use crate::router::{LanguageId, identify_regions};
 use crate::streaming::{
@@ -113,7 +114,9 @@ impl SttEngine for LiveRouter {
         let primary = self.primary()?;
         let regions = match (&self.lid, &opts.language) {
             (_, Some(l)) => vec![(0, samples.len(), l.clone())],
-            (Some(lid), None) => identify_regions(lid.as_ref(), samples, &self.langs, &self.policy)?,
+            (Some(lid), None) => {
+                identify_regions(lid.as_ref(), samples, &self.langs, &self.policy)?
+            }
             (None, None) => vec![(0, samples.len(), primary)],
         };
         let mut out = vec![];
@@ -180,11 +183,16 @@ impl SttEngine for LiveRouter {
         let mut la = LocalAgreement::new(dec, cfg);
         if !finals.is_empty() || (self.lid.is_some() && langs.len() > 1) {
             la = la.with_refiner(Box::new(RoutedRefiner {
-                lid: if langs.len() > 1 { self.lid.clone() } else { None },
+                lid: if langs.len() > 1 {
+                    self.lid.clone()
+                } else {
+                    None
+                },
                 finals,
                 langs,
                 state,
                 prev_end: None,
+                prev_tail: vec![],
                 opts,
             }));
         }
@@ -231,14 +239,64 @@ impl ChunkDecoder for RoutedChunkDecoder {
     }
 }
 
-/// Finals: language decision on the whole segment, then the offline model of that language.
+/// Finals: the segment's audio is split at short pauses, each part gets a language (online
+/// policy, continuing from the previous finals), consecutive same-language parts are decoded by
+/// that language's offline model, and the pieces are joined into one final. A live segment can
+/// span a language change (turns 300 ms apart), so one decision per segment is not enough.
 pub struct RoutedRefiner {
     lid: Option<Arc<dyn LanguageId>>,
     finals: BTreeMap<String, Arc<dyn LiveModel>>,
     langs: Vec<LangTag>,
     state: Arc<Mutex<OnlineLid>>,
+    /// End (absolute ms) of the audio already covered by earlier finals.
     prev_end: Option<u64>,
+    /// Normalized words at the end of the previous final (to drop a repeated overlap).
+    prev_tail: Vec<String>,
     opts: SttOptions,
+}
+
+impl RoutedRefiner {
+    /// Language of each VAD part of `audio` (times in samples), committed to the online state.
+    fn languages(
+        &mut self,
+        audio: &[f32],
+        t0_ms: u64,
+        fallback: &LangTag,
+    ) -> Result<Vec<(usize, usize, LangTag)>> {
+        let vad = crate::audio::VadParams {
+            min_silence_ms: 200,
+            ..Default::default()
+        };
+        let mut regions = crate::audio::split_on_silence(audio, &vad);
+        if regions.is_empty() {
+            regions.push((0, audio.len()));
+        }
+        let Some(lid) = &self.lid else {
+            return Ok(regions
+                .into_iter()
+                .map(|(a, b)| (a, b, fallback.clone()))
+                .collect());
+        };
+        let mut out = vec![];
+        let mut last_end = self.prev_end;
+        for (a, b) in regions {
+            let start = t0_ms + samples_to_ms(a);
+            let obs = LidObs {
+                dur_ms: samples_to_ms(b - a),
+                gap_ms: last_end.map(|e| start.saturating_sub(e)).unwrap_or(0),
+                probs: lid.probabilities(&audio[a..b], &self.langs)?,
+            };
+            last_end = Some(t0_ms + samples_to_ms(b));
+            let l = self
+                .state
+                .lock()
+                .unwrap_or_else(|p| p.into_inner())
+                .commit(&obs)
+                .unwrap_or_else(|| fallback.clone());
+            out.push((a, b, l));
+        }
+        Ok(out)
+    }
 }
 
 impl SegmentRefiner for RoutedRefiner {
@@ -248,50 +306,160 @@ impl SegmentRefiner for RoutedRefiner {
         audio_t0_ms: u64,
         seg: &Segment,
     ) -> Result<Option<Segment>> {
-        let start = seg.t0_ms as u64;
-        let gap_ms = self.prev_end.map(|e| start.saturating_sub(e)).unwrap_or(0);
-        self.prev_end = Some(seg.t1_ms as u64);
-        let lang = match &self.lid {
-            Some(lid) => {
-                let probs = lid.probabilities(audio, &self.langs)?;
-                let obs = LidObs {
-                    dur_ms: (seg.t1_ms.saturating_sub(seg.t0_ms)) as u64,
-                    gap_ms,
-                    probs,
-                };
-                let mut st = self.state.lock().unwrap_or_else(|p| p.into_inner());
-                st.commit(&obs)
-            }
-            None => seg.lang.clone(),
-        }
-        .unwrap_or_else(|| self.langs[0].clone());
-        let Some(m) = self.finals.get(&lang.primary()) else {
-            // No offline model for it: keep the committed text, with the decided language.
-            let mut s = seg.clone();
-            s.lang = Some(lang);
-            return Ok(Some(s));
-        };
-        let mut o = self.opts.clone();
-        o.language = Some(lang.clone());
-        o.word_timestamps = true;
-        let segs = m.transcribe_blocking(audio, audio_t0_ms, seg.channel, &o)?;
-        if segs.is_empty() && seg.lang.as_ref().map(|l| l.primary()) == Some(lang.primary()) {
-            // Same language as the partials and the offline model heard nothing: keep the
-            // committed text rather than emit an empty final.
+        // Audio before the end of the previous final was decoded already (the padding and
+        // LocalAgreement's word ends overlap): decoding it again repeats its words.
+        let skip_ms = self
+            .prev_end
+            .map(|e| e.saturating_sub(audio_t0_ms))
+            .unwrap_or(0);
+        let skip = ms_to_samples(skip_ms).min(audio.len());
+        let (audio, t0) = (&audio[skip..], audio_t0_ms + samples_to_ms(skip));
+        let fallback = seg.lang.clone().unwrap_or_else(|| self.langs[0].clone());
+        if audio.len() < ms_to_samples(200) {
             return Ok(None);
         }
-        Ok(Some(merge(segs, seg, lang)))
+        let parts = self.languages(audio, t0, &fallback)?;
+        // consecutive same-language parts -> one decode
+        let mut groups: Vec<(usize, usize, LangTag)> = vec![];
+        for (a, b, l) in parts {
+            match groups.last_mut() {
+                Some(g) if g.2 == l => g.1 = b,
+                _ => groups.push((a, b, l)),
+            }
+        }
+        let mut pieces: Vec<Segment> = vec![];
+        for (i, (a, b, l)) in groups.iter().enumerate() {
+            // extend each group to its neighbours' boundaries so no audio is lost between parts
+            let a = if i == 0 { 0 } else { *a };
+            let b = if i + 1 == groups.len() {
+                audio.len()
+            } else {
+                *b
+            };
+            let off = t0 + samples_to_ms(a);
+            match self.finals.get(&l.primary()) {
+                Some(m) => {
+                    let mut o = self.opts.clone();
+                    o.language = Some(l.clone());
+                    o.word_timestamps = true;
+                    pieces.extend(m.transcribe_blocking(&audio[a..b], off, seg.channel, &o)?);
+                }
+                None => {
+                    // no offline model: the committed words of this span
+                    let end = t0 + samples_to_ms(b);
+                    let words: Vec<_> = seg
+                        .words
+                        .iter()
+                        .flatten()
+                        .filter(|w| {
+                            let mid = (w.t0_ms as u64 + w.t1_ms as u64) / 2;
+                            mid >= off && mid < end
+                        })
+                        .cloned()
+                        .collect();
+                    if !words.is_empty() {
+                        pieces.push(Segment {
+                            text: words
+                                .iter()
+                                .map(|w| w.text.as_str())
+                                .collect::<Vec<_>>()
+                                .join(" "),
+                            t0_ms: words[0].t0_ms,
+                            t1_ms: words[words.len() - 1].t1_ms,
+                            lang: Some(l.clone()),
+                            words: Some(words),
+                            ..seg.clone()
+                        });
+                    }
+                }
+            }
+        }
+        self.prev_end = Some(
+            (seg.t1_ms as u64)
+                .max(pieces.last().map(|s| s.t1_ms as u64).unwrap_or(0))
+                .max(t0),
+        );
+        if pieces.is_empty() && groups.iter().all(|g| g.2 == fallback) {
+            // The offline model heard nothing where the partials were in the same language:
+            // keep the committed text rather than emit an empty final.
+            return Ok(None);
+        }
+        let mut out = merge(pieces, seg, fallback);
+        drop_repeated_overlap(&mut out, &self.prev_tail);
+        let words: Vec<String> = crate::metrics::normalize(&out.text)
+            .split_whitespace()
+            .map(String::from)
+            .collect();
+        if !words.is_empty() {
+            self.prev_tail = words[words.len().saturating_sub(12)..].to_vec();
+        }
+        Ok(Some(out))
     }
 }
 
-/// Several decoded segments -> one caption segment.
-fn merge(segs: Vec<Segment>, like: &Segment, lang: LangTag) -> Segment {
+/// Remove leading words of `s` that repeat the end of the previous final (>= 2 words).
+fn drop_repeated_overlap(s: &mut Segment, prev_tail: &[String]) {
+    let words: Vec<String> = crate::metrics::normalize(&s.text)
+        .split_whitespace()
+        .map(String::from)
+        .collect();
+    let max = words.len().min(prev_tail.len());
+    let k = (2..=max)
+        .rev()
+        .find(|&k| words[..k] == prev_tail[prev_tail.len() - k..])
+        .unwrap_or(0);
+    if k == 0 {
+        return;
+    }
+    // drop the first k words of the text (keeping the rest's punctuation and case)
+    let mut seen = 0;
+    let mut cut = s.text.len();
+    for (i, w) in s
+        .text
+        .split_inclusive(char::is_whitespace)
+        .scan(0, |pos, w| {
+            let start = *pos;
+            *pos += w.len();
+            Some((start, w))
+        })
+    {
+        if seen == k {
+            cut = i;
+            break;
+        }
+        if !crate::metrics::normalize(w).is_empty() {
+            seen += 1;
+        }
+    }
+    s.text = s.text[cut.min(s.text.len())..].trim().to_string();
+    if let Some(ws) = s.words.as_mut() {
+        let n = k.min(ws.len());
+        ws.drain(..n);
+        if let Some(w) = ws.first() {
+            s.t0_ms = w.t0_ms;
+        }
+    }
+}
+
+/// Several decoded segments -> one caption segment, in the language with the most words.
+fn merge(segs: Vec<Segment>, like: &Segment, fallback: LangTag) -> Segment {
     let text = segs
         .iter()
         .map(|s| s.text.trim())
         .filter(|t| !t.is_empty())
         .collect::<Vec<_>>()
         .join(" ");
+    let mut count: BTreeMap<String, usize> = BTreeMap::new();
+    for s in &segs {
+        if let Some(l) = &s.lang {
+            *count.entry(l.primary()).or_default() += s.text.split_whitespace().count();
+        }
+    }
+    let lang = count
+        .into_iter()
+        .max_by_key(|x| x.1)
+        .map(|x| LangTag(x.0))
+        .unwrap_or(fallback);
     let words: Vec<_> = segs
         .iter()
         .flat_map(|s| s.words.clone().unwrap_or_default())
@@ -456,7 +624,11 @@ mod tests {
         LiveRouter {
             lid,
             langs: vec![LangTag::vi(), LangTag::en()],
-            partial: [("vi".to_string(), vi.clone()), ("en".to_string(), en.clone())].into(),
+            partial: [
+                ("vi".to_string(), vi.clone()),
+                ("en".to_string(), en.clone()),
+            ]
+            .into(),
             finals: [("vi".to_string(), vi), ("en".to_string(), en)].into(),
             policy: LidPolicy::default(),
             lid_partials: true,
@@ -497,6 +669,42 @@ mod tests {
                 assert!(ups[i + 1..].iter().all(|v| v.segment.idx != u.segment.idx));
             }
         }
+    }
+
+    #[test]
+    fn repeated_overlap_with_the_previous_final_is_dropped() {
+        let w = |t: &str, i: u32| almond_types::artifact::body::Word {
+            t0_ms: i * 100,
+            t1_ms: i * 100 + 90,
+            text: t.into(),
+            p: None,
+        };
+        let mut s = Segment {
+            idx: 0,
+            t0_ms: 0,
+            t1_ms: 500,
+            channel: AudioChannel::Mic,
+            speaker: None,
+            lang: None,
+            text: "for kids. And then we left.".into(),
+            confidence: None,
+            words: Some(vec![
+                w("for", 0),
+                w("kids.", 1),
+                w("And", 2),
+                w("then", 3),
+                w("we", 4),
+                w("left.", 5),
+            ]),
+        };
+        let prev: Vec<String> = ["interesting", "things", "for", "kids"]
+            .iter()
+            .map(|s| s.to_string())
+            .collect();
+        drop_repeated_overlap(&mut s, &prev);
+        assert_eq!(s.text, "And then we left.");
+        assert_eq!(s.words.as_ref().unwrap().len(), 4);
+        assert_eq!(s.t0_ms, 200);
     }
 
     #[tokio::test]
