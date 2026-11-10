@@ -3,7 +3,9 @@
 use crate::protocol::{self, ChunkHeader, Frame, Msg, PROTO_VERSION};
 use almond_store::{FsBlobStore, SqliteStore};
 use almond_types::store::{BlobStore, Store};
-use almond_types::sync::{Connection, DeviceInfo, SyncReport, Transport, VersionVector};
+use almond_types::sync::{
+    Connection, DeviceInfo, SyncOutcome, SyncReport, Transport, VersionVector,
+};
 use almond_types::time::now_ms;
 use almond_types::{BlobHash, DeviceId, Error, Result};
 use serde::{Deserialize, Serialize};
@@ -242,6 +244,11 @@ impl SyncEngine {
             blobs_sent: stats.blobs_sent,
             blobs_received: stats.blobs_received,
             duration_ms: t0.elapsed().as_millis() as u32,
+            status: match &res {
+                Ok(_) => SyncOutcome::Ok,
+                Err(Error::Network(_)) => SyncOutcome::Offline,
+                Err(_) => SyncOutcome::Failed,
+            },
             error: res.err().map(|e| e.to_string()),
         };
         emit(SyncProgress::Finished(report.clone()));
@@ -318,6 +325,7 @@ impl SyncEngine {
             blobs_received: s.blobs_received,
             duration_ms: t0.elapsed().as_millis() as u32,
             error: None,
+            status: SyncOutcome::Ok,
         })
     }
 

@@ -422,6 +422,7 @@ pub fn frames(samples: &[f32], frame_ms: u64, channel: AudioChannel) -> Vec<Audi
             channel,
             t0_ms: (i * n * 1000 / SR) as u64,
             samples: c.to_vec(),
+            synthesized: false,
         })
         .collect()
 }
@@ -580,6 +581,7 @@ mod tests {
                 channel: AudioChannel::Mic,
                 t0_ms: 0,
                 samples: loud(1300),
+                synthesized: false,
             })
             .await
             .unwrap();

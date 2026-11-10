@@ -6,10 +6,8 @@
 //! - among concurrent live claims the lowest `(claimed_at, device)` wins;
 //! - once every claim has expired, any capable device may reclaim.
 
-use almond_types::event::{EventBody, EventKind};
 use almond_types::job::{Job, JobLease, JobOutcome, JobStatus};
 use almond_types::store::Store;
-use almond_types::sync::VersionVector;
 use almond_types::time::UnixMs;
 use almond_types::{DeviceId, Id, Result};
 use serde::Serialize;
@@ -69,53 +67,22 @@ impl JobState {
     }
 }
 
-/// Fold the whole event log into per-job states.
-///
-/// Note: scans the full log (the `Store` contract has no lease view yet; see
-/// `docs/contract-requests/ws-c.md`).
+/// Per-job states (claims and outcomes) from the store's job view.
 pub fn job_states(store: &dyn Store) -> Result<BTreeMap<Id, JobState>> {
-    let events = store.events_missing(&VersionVector::default(), usize::MAX)?;
-    let mut out: BTreeMap<Id, JobState> = BTreeMap::new();
-    let mut orphans: Vec<EventBody> = vec![];
-    let mut evs: Vec<_> = events
+    Ok(store
+        .job_records(None)?
         .into_iter()
-        .filter(|e| {
-            matches!(
-                e.kind.0.as_str(),
-                EventKind::JOB_REQUESTED | EventKind::JOB_CLAIMED | EventKind::JOB_FINISHED
+        .map(|r| {
+            (
+                r.job.id.clone(),
+                JobState {
+                    job: r.job,
+                    leases: r.leases,
+                    outcomes: r.outcomes,
+                },
             )
         })
-        .collect();
-    evs.sort_by(|a, b| (a.hlc, &a.device).cmp(&(b.hlc, &b.device)));
-    for ev in evs {
-        match EventBody::decode(&ev)? {
-            Some(EventBody::JobRequested(j)) => {
-                out.entry(j.id.clone()).or_insert(JobState {
-                    job: j,
-                    leases: vec![],
-                    outcomes: vec![],
-                });
-            }
-            Some(b @ (EventBody::JobClaimed(_) | EventBody::JobFinished(_))) => orphans.push(b),
-            _ => {}
-        }
-    }
-    for b in orphans {
-        match b {
-            EventBody::JobClaimed(l) => {
-                if let Some(s) = out.get_mut(&l.job_id) {
-                    s.leases.push(l);
-                }
-            }
-            EventBody::JobFinished(o) => {
-                if let Some(s) = out.get_mut(&o.job_id) {
-                    s.outcomes.push(o);
-                }
-            }
-            _ => {}
-        }
-    }
-    Ok(out)
+        .collect())
 }
 
 #[cfg(test)]

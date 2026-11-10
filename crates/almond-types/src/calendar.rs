@@ -63,6 +63,9 @@ pub struct CalendarDelta {
     pub deletes: Vec<String>,
     /// Opaque cursor (Google syncToken, etc.) to pass next time.
     pub next_cursor: Option<String>,
+    /// Calendar ids (within this source) whose stored events must be dropped *before* applying
+    /// `upserts` (full resync after an expired sync token, calendar unsubscribed).
+    pub reset_calendars: Vec<String>,
 }
 
 #[async_trait]

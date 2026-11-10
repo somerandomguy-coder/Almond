@@ -35,9 +35,31 @@ struct MemState {
     artifacts: BTreeMap<Id, Artifact>,
     notes: HashMap<Id, Vec<Vec<u8>>>,
     calendar: BTreeMap<(String, String), CalendarEvent>,
-    jobs: BTreeMap<Id, (Job, JobStatus)>,
+    jobs: BTreeMap<Id, MemJob>,
+    blobs: BTreeMap<String, crate::store::BlobInfo>,
     kv: HashMap<String, String>,
     next_seq: u64,
+}
+
+#[derive(Default)]
+struct MemJob {
+    job: Option<Job>,
+    leases: Vec<crate::job::JobLease>,
+    outcomes: Vec<crate::job::JobOutcome>,
+}
+
+impl MemJob {
+    fn record(&self) -> Option<crate::store::JobRecord> {
+        let job = self.job.clone()?;
+        let now = crate::time::now_ms();
+        let active = self.leases.iter().any(|l| l.expires_at > now);
+        Some(crate::store::JobRecord {
+            status: JobStatus::derive(&self.outcomes, active),
+            job,
+            leases: self.leases.clone(),
+            outcomes: self.outcomes.clone(),
+        })
+    }
 }
 
 /// In-memory `Store`. Materializes the well-known event kinds.
@@ -91,23 +113,42 @@ impl MemStore {
                 st.calendar.remove(&(source, event_id));
             }
             EventBody::JobRequested(j) => {
-                st.jobs
-                    .entry(j.id.clone())
-                    .or_insert((j, JobStatus::Pending));
+                let e = st.jobs.entry(j.id.clone()).or_default();
+                if e.job.is_none() {
+                    e.job = Some(j);
+                }
             }
             EventBody::JobClaimed(l) => {
-                if let Some(j) = st.jobs.get_mut(&l.job_id)
-                    && j.1 == JobStatus::Pending
-                {
-                    j.1 = JobStatus::Claimed;
-                }
+                // Claims may arrive before the request; keep them.
+                let e = st.jobs.entry(l.job_id.clone()).or_default();
+                e.leases.push(l);
+                e.leases.sort_by(|a, b| {
+                    (&a.claimed_at, &a.device.0).cmp(&(&b.claimed_at, &b.device.0))
+                });
             }
             EventBody::JobFinished(o) => {
-                if let Some(j) = st.jobs.get_mut(&o.job_id) {
-                    j.1 = o.status;
+                // Mock: outcomes kept in arrival order (the real store orders by (hlc, device)).
+                st.jobs
+                    .entry(o.job_id.clone())
+                    .or_default()
+                    .outcomes
+                    .push(o);
+            }
+            EventBody::BlobAvailable { hash, size, mime } => {
+                let b = st
+                    .blobs
+                    .entry(hash.0.clone())
+                    .or_insert_with(|| crate::store::BlobInfo {
+                        hash,
+                        size,
+                        mime,
+                        holders: vec![],
+                    });
+                if !b.holders.contains(&ev.device) {
+                    b.holders.push(ev.device.clone());
                 }
             }
-            EventBody::DeviceInfo(_) | EventBody::BlobAvailable { .. } => {}
+            EventBody::DeviceInfo(_) => {}
         }
         Ok(())
     }
@@ -242,14 +283,26 @@ impl Store for MemStore {
 
     fn jobs(&self, status: Option<JobStatus>) -> Result<Vec<(Job, JobStatus)>> {
         Ok(self
+            .job_records(status)?
+            .into_iter()
+            .map(|r| (r.job, r.status))
+            .collect())
+    }
+
+    fn job_records(&self, status: Option<JobStatus>) -> Result<Vec<crate::store::JobRecord>> {
+        Ok(self
             .st
             .lock()
             .unwrap()
             .jobs
             .values()
-            .filter(|(_, s)| status.is_none_or(|x| x == *s))
-            .cloned()
+            .filter_map(MemJob::record)
+            .filter(|r| status.is_none_or(|x| x == r.status))
             .collect())
+    }
+
+    fn known_blobs(&self) -> Result<Vec<crate::store::BlobInfo>> {
+        Ok(self.st.lock().unwrap().blobs.values().cloned().collect())
     }
 
     fn search(&self, text: &str, limit: u32) -> Result<Vec<SearchHit>> {
@@ -411,6 +464,7 @@ impl AudioStream for MockAudioStream {
             channel: self.channel,
             t0_ms: t0,
             samples,
+            synthesized: false,
         }))
     }
     async fn stop(&mut self) -> Result<()> {
@@ -461,6 +515,7 @@ impl SttEngine for MockStt {
             size_bytes: None,
             sha256: None,
             installed: true,
+            role: crate::stt::ModelRole::Stt,
         }
     }
     async fn transcribe(
@@ -658,6 +713,7 @@ impl CalendarSource for MockCalendar {
                 vec![]
             },
             deletes: vec![],
+            reset_calendars: vec![],
             next_cursor: Some("mock-cursor".into()),
         })
     }
@@ -813,7 +869,7 @@ impl Transport for MemTransport {
             })
             .collect())
     }
-    async fn add_addr(&self, _: Option<DeviceId>, _: String) -> Result<()> {
+    async fn add_addr(&self, _: DeviceId, _: String) -> Result<()> {
         Ok(())
     }
     async fn connect(&self, peer: &DeviceId) -> Result<Box<dyn Connection>> {
@@ -866,6 +922,7 @@ pub mod fixtures {
             platform: "windows".into(),
             app_version: "0.1.0".into(),
             capabilities: vec![],
+            last_active: None,
         }
     }
 
@@ -883,6 +940,7 @@ pub mod fixtures {
             audio: vec![],
             notes_doc: Id::new(),
             tags: vec![],
+            tz: Some("Asia/Ho_Chi_Minh".into()),
         }
     }
 

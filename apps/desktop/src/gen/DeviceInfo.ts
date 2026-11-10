@@ -10,4 +10,9 @@ name: string,
 /**
  * "windows" | "linux" | "android"
  */
-platform: string, app_version: string, capabilities: Array<Capability>, };
+platform: string, app_version: string, capabilities: Array<Capability>, 
+/**
+ * Last time the user actively used the app on this device (focus/input). Re-announced while
+ * in use; lets only the most recently used device show reminders.
+ */
+last_active: number | null, };

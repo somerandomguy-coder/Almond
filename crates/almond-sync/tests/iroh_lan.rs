@@ -130,7 +130,7 @@ async fn pair_and_sync_over_real_iroh() {
     // wrong code first: fails, session stays open (failures < limit)
     let wrong = PairingSecret([0; 6]).to_words();
     c.transport
-        .add_addr(Some(a.info.id.clone()), t2.addrs[0].clone())
+        .add_addr(a.info.id.clone(), t2.addrs[0].clone())
         .await
         .unwrap();
     assert!(

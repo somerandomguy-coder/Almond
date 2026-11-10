@@ -20,6 +20,32 @@ pub struct SttModelInfo {
     pub size_bytes: Option<u64>,
     pub sha256: Option<String>,
     pub installed: bool,
+    #[serde(default)]
+    pub role: ModelRole,
+}
+
+/// What a speech model is for (lets the UI list diarization models separately).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize, TS)]
+#[serde(rename_all = "snake_case")]
+#[ts(export)]
+pub enum ModelRole {
+    #[default]
+    Stt,
+    /// Diarization: speech/speaker-change segmentation.
+    Segmentation,
+    /// Diarization: speaker embedding.
+    Embedding,
+}
+
+/// Notification `models.downloadProgress` while a model is being downloaded.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub struct ModelDownloadProgress {
+    pub id: String,
+    #[ts(type = "number")]
+    pub done_bytes: u64,
+    #[ts(type = "number | null")]
+    pub total_bytes: Option<u64>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS, Default)]
@@ -35,6 +61,10 @@ pub struct SttOptions {
 }
 
 /// Partial (unstable) or final text from a streaming session.
+///
+/// Protocol: updates carry `segment.idx`. A partial (`is_final = false`) for idx N **replaces**
+/// the previous partial for N. Exactly one final arrives per idx, and after it no further updates
+/// for N arrive.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
 #[ts(export)]
 pub struct SttUpdate {

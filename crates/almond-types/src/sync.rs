@@ -39,6 +39,11 @@ pub struct DeviceInfo {
     pub platform: String,
     pub app_version: String,
     pub capabilities: Vec<Capability>,
+    /// Last time the user actively used the app on this device (focus/input). Re-announced while
+    /// in use; lets only the most recently used device show reminders.
+    #[serde(default)]
+    #[ts(type = "number | null")]
+    pub last_active: Option<UnixMs>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
@@ -76,6 +81,19 @@ pub struct SyncReport {
     pub blobs_received: u32,
     pub duration_ms: u32,
     pub error: Option<String>,
+    #[serde(default)]
+    pub status: SyncOutcome,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize, TS)]
+#[serde(rename_all = "snake_case")]
+#[ts(export)]
+pub enum SyncOutcome {
+    #[default]
+    Ok,
+    /// Peer not reachable (not on the LAN / app closed): not an error worth alarming about.
+    Offline,
+    Failed,
 }
 
 /// Bidirectional, ordered, reliable, authenticated message channel to a paired peer.
@@ -94,8 +112,9 @@ pub trait Transport: Send + Sync {
     fn local_device(&self) -> DeviceId;
     /// Peers currently visible on the LAN (mDNS / NSD / manual), paired or not.
     async fn discover(&self) -> crate::Result<Vec<PeerInfo>>;
-    /// Add a manually entered address ("192.168.1.20:47321").
-    async fn add_addr(&self, device: Option<DeviceId>, addr: String) -> crate::Result<()>;
+    /// Add a manually entered address ("192.168.1.20:47321") for a known device id (iroh dials
+    /// by public key, so an address alone cannot be authenticated).
+    async fn add_addr(&self, device: DeviceId, addr: String) -> crate::Result<()>;
     async fn connect(&self, peer: &DeviceId) -> crate::Result<Box<dyn Connection>>;
     /// Wait for the next incoming connection from a *paired* peer.
     async fn accept(&self) -> crate::Result<Box<dyn Connection>>;

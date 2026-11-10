@@ -13,6 +13,13 @@ in `apps/desktop/src/gen/` by `cargo test -p almond-types` (ts-rs). **Never hand
 
 The UI never touches storage directly — it only calls these methods.
 
+**Tauri conventions** (`apps/desktop/src/api/tauri.ts` ↔ `apps/desktop/src-tauri/src`):
+- every method is a command named with `.` → `_` (`notes.applyUpdate` → `notes_applyUpdate`),
+  invoked as `invoke(cmd, { params })`: one argument named `params` holding the method's params;
+- notifications are Tauri events with the same mapping (`transcript.update` → `transcript_update`),
+  because Tauri event names may not contain `.`;
+- errors reject with `{ code, message }` using the codes under [Errors](#errors).
+
 ## Methods
 
 | Method | Params | Result |
@@ -26,14 +33,15 @@ The UI never touches storage directly — it only calls these methods.
 | `recording.stop` | `{}` | `RecordingStatus` (pipeline jobs are queued automatically) |
 | `recording.status` | `{}` | `RecordingStatus` |
 | `audio.devices` | `{}` | `AudioDeviceInfo[]` |
+| `audio.url` | `{ meeting_id, channel? }` | `{ url: string \| null }` — playable URL for the meeting's audio track (Tauri asset protocol); `null` if the blob is not on this device (e.g. a phone that synced text only) |
 | `artifacts.list` | `{ meeting_id, kind? }` | `Artifact[]` |
 | `artifacts.get` | `{ id }` | `Artifact` |
-| `artifacts.rerun` | `RerunParams` | `Job` |
+| `artifacts.rerun` | `RerunParams` | `Job` (for `enhance_notes.llm` the core reads the meeting's notes doc and passes its plain text as `params.user_notes`) |
 | `notes.get` | `{ doc }` | `NotesSnapshot` |
 | `notes.applyUpdate` | `{ doc, update_b64 }` | `null` |
 | `search.query` | `{ text, limit? }` | `SearchHit[]` |
 | `calendar.sources` | `{}` | `CalendarSourcesResult` |
-| `calendar.addGoogle` | `{}` (opens browser OAuth) | `CalendarSourceInfo` |
+| `calendar.addGoogle` | `{ gmail?: boolean, login_hint?: string }` (opens browser OAuth; asks for Gmail read-only only when `gmail` is true; re-run with `login_hint` to add/remove Gmail for an account) | `CalendarSourceInfo` |
 | `calendar.addIcs` | `{ url, label? }` | `CalendarSourceInfo` |
 | `calendar.importPhone` | `{}` (Android only; asks READ_CALENDAR) | `CalendarSourceInfo` |
 | `calendar.remove` | `{ source }` | `null` |
@@ -49,16 +57,25 @@ The UI never touches storage directly — it only calls these methods.
 | `jobs.cancel` | `{ id }` | `null` |
 | `verify.run` | `{ artifact_id, verifiers? }` | `Job` |
 | `verify.verifiers` | `{}` | `VerifierDescriptor[]` |
-| `sync.status` | `{}` | `SyncStatus` |
+| `sync.status` | `{}` | `SyncStatus` (`auto_sync_while_open` mirrors setting `sync.auto_while_open`) |
 | `sync.now` | `{ peers? }` | `SyncReport[]` |
 | `sync.pairBegin` | `{}` | `PairBeginResult` |
 | `sync.pairAccept` | `{ qr_payload? , words? }` | `PeerInfo` |
 | `sync.unpair` | `{ device }` | `null` |
-| `sync.addAddr` | `{ addr }` | `null` |
+| `sync.addAddr` | `{ device, addr }` (device id required: iroh dials by key; shown under Settings → Devices and in the pairing QR) | `null` |
 | `models.list` | `{}` | `ModelEntry[]` |
 | `models.download` | `{ id }` | `Job` |
 | `models.select` | `ModelSlot` | `null` |
+| `models.slots` | `{}` | `ModelSlot[]` (current selection per task/language) |
+| `storage.usage` | `{}` | `{ db_bytes, blobs_bytes, models_bytes, audio_bytes }` |
+| `app.info` | `{}` | `{ name, version, api_version, platform: "windows" \| "linux" \| "android" }` (Tauri command `app_info`) |
 | `settings.get` / `settings.set` | `{ key }` / `{ key, value }` | JSON |
+
+**Settings keys** (local to the device, never synced): `ui.language` (`"vi" | "en"`), `ui.theme`
+(`"system" | "light" | "dark"`), `calendar.reminder_lead_min` (number), `sync.auto_while_open`
+(bool; the core syncs every 2 min with paired peers while the app is open), `google.oauth_client`
+(`{ client_id, client_secret }`, the user's own Desktop OAuth client; see docs/google-setup.md),
+`llm.ollama_url` (default `http://127.0.0.1:11434`).
 
 ## Notifications (server → client)
 
@@ -70,6 +87,7 @@ The UI never touches storage directly — it only calls these methods.
 | `artifact.added` | `Artifact` (from this or any synced device) |
 | `sync.progress` | `SyncProgress` |
 | `calendar.reminder` | `MeetingReminder` |
+| `models.downloadProgress` | `ModelDownloadProgress` |
 
 ## External processors (JSON-RPC over stdio or HTTP)
 
@@ -78,6 +96,8 @@ An external processor is any program implementing:
 - `processor.describe` → `ProcessorDescriptor[]`
 - `processor.run` `{ processor, job_id, meeting: Meeting, params, inputs: Artifact[] }` → `ArtifactDraft[]`
 - optional notification `processor.progress` `{ job_id, progress, message }` (processor → host)
+- notification `processor.cancel` `{ job_id }` (host → processor): stop the job and return an error
+  (the host gives up on it after a grace period)
 
 This is the intended path for research verifiers (Python + Z3/Prolog/NLI models).
 

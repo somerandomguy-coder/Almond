@@ -128,6 +128,16 @@ pub struct Provenance {
     pub inputs: Vec<Id>,
 }
 
+/// `Provenance::params_hash`: BLAKE3 hex of the prompt/template id and the job params, so reruns
+/// with the same settings are recognisably identical across processors and devices.
+pub fn params_hash(template_id: &str, params: &serde_json::Value) -> String {
+    let mut h = blake3::Hasher::new();
+    h.update(template_id.as_bytes());
+    h.update(&[0]);
+    h.update(params.to_string().as_bytes());
+    h.finalize().to_hex().to_string()
+}
+
 /// The grounding primitive: points into a segment of another artifact (usually a transcript).
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, TS)]
 #[ts(export)]
@@ -305,7 +315,8 @@ pub mod body {
         pub id: String,
         /// Atomic, checkable statement in natural language.
         pub text: String,
-        /// Where the claim came from (e.g. summary artifact, section/bullet index as segment).
+        /// Where the claim came from. For summaries: `artifact` = the summary's id and `segment` =
+        /// the bullet's flat index across all sections (section 0's bullets first, then 1, ...).
         pub source: SpanRef,
         /// Evidence the generator cited.
         pub evidence: Vec<SpanRef>,
@@ -319,6 +330,16 @@ pub mod body {
     #[ts(export)]
     pub struct Verdicts {
         pub verdicts: Vec<Verdict>,
+        /// Verifiers that failed; the others' verdicts still stand.
+        #[serde(default)]
+        pub errors: Vec<VerifierError>,
+    }
+
+    #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+    #[ts(export)]
+    pub struct VerifierError {
+        pub verifier: String,
+        pub message: String,
     }
     impl ArtifactBody for Verdicts {
         const KIND: &'static str = ArtifactKind::VERDICTS;

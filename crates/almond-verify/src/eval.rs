@@ -115,6 +115,7 @@ pub fn build(m: &FixtureMeeting) -> Built {
         audio: vec![],
         notes_doc: Id::new(),
         tags: vec![],
+        tz: None,
     };
     let segments = m
         .transcript
@@ -343,6 +344,7 @@ pub async fn run(
             calendar_event: Some(b.event.clone()),
             claims_artifact: claims_art.clone(),
             extra: vec![b.summary.clone()],
+            params: serde_json::Value::Null,
         };
         let out = registry.run(&claims, &ctx, None).await;
         rep.errors.extend(out.errors.iter().cloned());

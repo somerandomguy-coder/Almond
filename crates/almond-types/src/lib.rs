@@ -33,7 +33,7 @@ pub mod verify;
 #[cfg(feature = "mock")]
 pub mod mock;
 
-pub use artifact::{Artifact, ArtifactDraft, ArtifactKind, Provenance, SpanRef};
+pub use artifact::{Artifact, ArtifactDraft, ArtifactKind, Provenance, SpanRef, params_hash};
 pub use error::{Error, Result};
 pub use event::{Event, EventKind};
 pub use ids::{BlobHash, DeviceId, Id};

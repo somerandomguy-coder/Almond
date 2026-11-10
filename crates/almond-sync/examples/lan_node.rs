@@ -89,7 +89,7 @@ async fn handle(node: &SyncNode, p: &[&str]) -> Result<String> {
         "paircode" => {
             let host = DeviceId(p[1].to_string());
             if p[2] != "-" {
-                t.add_addr(Some(host.clone()), p[2].to_string()).await?;
+                t.add_addr(host.clone(), p[2].to_string()).await?;
             }
             t.pair_with_code(&p[3..].join(" "), Some(host)).await?.name
         }

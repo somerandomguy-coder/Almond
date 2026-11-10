@@ -12,6 +12,8 @@ pub mod keys {
     pub const DEVICE_KEY: &str = "almond/device_key";
     /// `format!("{GOOGLE_REFRESH_PREFIX}{email}")`
     pub const GOOGLE_REFRESH_PREFIX: &str = "almond/google/refresh/";
+    /// JSON list of connected Google accounts (email, granted scopes); no secrets.
+    pub const GOOGLE_ACCOUNTS: &str = "almond/google/accounts";
     /// Local API bearer token.
     pub const API_TOKEN: &str = "almond/api_token";
 }

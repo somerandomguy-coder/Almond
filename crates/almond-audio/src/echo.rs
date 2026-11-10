@@ -165,6 +165,7 @@ mod tests {
                 channel: ch,
                 t0_ms: k as u64 * 100,
                 samples: c.to_vec(),
+                synthesized: false,
             })
             .collect()
     }

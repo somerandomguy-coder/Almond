@@ -46,8 +46,14 @@ pub struct AudioFrame {
     pub t0_ms: u64,
     /// 16 kHz mono f32 samples.
     pub samples: Vec<f32>,
+    /// `true` if this frame is zero-fill (silent loopback, device gap), not captured audio.
+    /// STT can skip it cheaply and the UI can show "device lost".
+    pub synthesized: bool,
 }
 
+/// All streams opened from one backend share a capture epoch: `AudioFrame::t0_ms` of a mic and a
+/// loopback stream opened for the same session are on the same clock, until the backend's clock is
+/// reset for a new session (backend-specific, e.g. `CpalBackend::reset_clock`).
 #[async_trait]
 pub trait AudioBackend: Send + Sync {
     fn name(&self) -> &str;

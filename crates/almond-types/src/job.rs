@@ -74,3 +74,20 @@ pub enum JobStatus {
     Failed,
     Cancelled,
 }
+
+impl JobStatus {
+    /// Status of a job from its outcomes (in `(hlc, device)` order) and whether an unexpired
+    /// claim exists. Any `Done` wins (two devices may race; a success beats a failure), then the
+    /// latest outcome, then `Claimed`, then `Pending`.
+    pub fn derive(outcomes: &[JobOutcome], has_active_lease: bool) -> JobStatus {
+        if outcomes.iter().any(|o| o.status == JobStatus::Done) {
+            JobStatus::Done
+        } else if let Some(o) = outcomes.last() {
+            o.status
+        } else if has_active_lease {
+            JobStatus::Claimed
+        } else {
+            JobStatus::Pending
+        }
+    }
+}

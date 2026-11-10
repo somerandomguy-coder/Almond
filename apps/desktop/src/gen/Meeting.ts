@@ -17,4 +17,9 @@ languages: Array<LangTag>, audio: Array<AudioTrack>,
 /**
  * Loro document holding the user's own notes for this meeting.
  */
-notes_doc: Id, tags: Array<string>, };
+notes_doc: Id, tags: Array<string>, 
+/**
+ * IANA time zone the meeting happened in (e.g. "Asia/Ho_Chi_Minh"). Used to resolve relative
+ * dates ("thứ Sáu", "tomorrow"). `None` = the device's local zone.
+ */
+tz: string | null, };

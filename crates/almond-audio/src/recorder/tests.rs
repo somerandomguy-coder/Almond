@@ -35,6 +35,7 @@ fn tone_frames(ch: AudioChannel, secs: u32, hz: f32, frame_ms: u64) -> Vec<Audio
                     0.3 * (2.0 * std::f32::consts::PI * hz * t).sin()
                 })
                 .collect(),
+            synthesized: false,
         })
         .collect()
 }
@@ -186,6 +187,7 @@ fn gaps_and_overlaps_follow_clock() {
         channel: AudioChannel::System,
         t0_ms: t0,
         samples: vec![0.5; 1600],
+        synthesized: false,
     };
     rec.push(&f(500)).unwrap(); // starts late -> 500 ms silence first
     rec.push(&f(550)).unwrap(); // overlaps by 50 ms -> trimmed

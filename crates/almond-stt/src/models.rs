@@ -192,6 +192,7 @@ impl ModelManager {
             size_bytes: e.source.size,
             sha256: e.source.sha256.clone(),
             installed: self.is_installed(id),
+            role: almond_types::stt::ModelRole::Stt,
         })
     }
 

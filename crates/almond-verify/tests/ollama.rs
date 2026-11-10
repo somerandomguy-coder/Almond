@@ -38,6 +38,7 @@ async fn nli_catches_300_vs_200_and_llm_extraction_runs() {
         calendar_event: None,
         claims_artifact: s.clone(),
         extra: vec![],
+        params: serde_json::Value::Null,
     };
     let vs = NliVerifier::new(llm, model())
         .verify(&claims, &ctx)

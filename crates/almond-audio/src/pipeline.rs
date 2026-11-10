@@ -382,10 +382,13 @@ impl PipelineStream {
         let samples: Vec<f32> = self.out.drain(..len).collect();
         let t0_ms = self.frames_emitted * self.frame_ms as u64;
         self.frames_emitted += 1;
+        // Zero-fill (gaps, wall-clock silence) is exact 0.0; captured audio essentially never is.
+        let synthesized = samples.iter().all(|&s| s == 0.0);
         AudioFrame {
             channel: self.channel,
             t0_ms,
             samples,
+            synthesized,
         }
     }
 

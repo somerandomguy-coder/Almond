@@ -64,6 +64,7 @@ impl SttEngine for RoutedEngine {
             size_bytes: None,
             sha256: None,
             installed: true,
+            role: almond_types::stt::ModelRole::Stt,
         }
     }
 

@@ -75,6 +75,7 @@ pub(crate) fn diff(
             upserts,
             deletes,
             next_cursor: None,
+            reset_calendars: vec![],
         },
         next,
     )

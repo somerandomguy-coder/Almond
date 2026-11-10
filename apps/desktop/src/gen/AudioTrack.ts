@@ -6,7 +6,12 @@ export type AudioTrack = { channel: AudioChannel, blob: BlobHash,
 /**
  * "opus" | "wav" | "flac"
  */
-codec: string, sample_rate: number, 
+codec: string, 
+/**
+ * Sample rate of the encoded *source* (16 000 for pipeline audio), not the decoder's output
+ * rate (Ogg Opus always decodes at 48 kHz).
+ */
+sample_rate: number, 
 /**
  * Offset of this track's first sample from `Meeting::started_at`.
  */

@@ -22,6 +22,10 @@ pub struct Meeting {
     /// Loro document holding the user's own notes for this meeting.
     pub notes_doc: Id,
     pub tags: Vec<String>,
+    /// IANA time zone the meeting happened in (e.g. "Asia/Ho_Chi_Minh"). Used to resolve relative
+    /// dates ("thứ Sáu", "tomorrow"). `None` = the device's local zone.
+    #[serde(default)]
+    pub tz: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
@@ -64,6 +68,8 @@ pub struct AudioTrack {
     pub blob: BlobHash,
     /// "opus" | "wav" | "flac"
     pub codec: String,
+    /// Sample rate of the encoded *source* (16 000 for pipeline audio), not the decoder's output
+    /// rate (Ogg Opus always decodes at 48 kHz).
     pub sample_rate: u32,
     /// Offset of this track's first sample from `Meeting::started_at`.
     pub offset_ms: u32,

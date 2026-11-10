@@ -3,6 +3,10 @@ import type { Segment } from "./Segment";
 
 /**
  * Partial (unstable) or final text from a streaming session.
+ *
+ * Protocol: updates carry `segment.idx`. A partial (`is_final = false`) for idx N **replaces**
+ * the previous partial for N. Exactly one final arrives per idx, and after it no further updates
+ * for N arrive.
  */
 export type SttUpdate = { segment: Segment, 
 /**

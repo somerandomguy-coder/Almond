@@ -34,7 +34,7 @@ pub const SCOPE_CALENDAR_READONLY: &str = "https://www.googleapis.com/auth/calen
 pub const SCOPE_GMAIL_READONLY: &str = "https://www.googleapis.com/auth/gmail.readonly";
 
 /// Secret-store key holding the JSON list of [`GoogleAccount`]s (no tokens in it).
-pub const ACCOUNT_INDEX_KEY: &str = "almond/google/accounts";
+pub const ACCOUNT_INDEX_KEY: &str = almond_types::secrets::keys::GOOGLE_ACCOUNTS;
 
 /// Opens a URL in the user's browser. Desktop: `tauri-plugin-opener`; Android: Custom Tab.
 pub type OpenUrl = Arc<dyn Fn(&str) -> Result<()> + Send + Sync>;

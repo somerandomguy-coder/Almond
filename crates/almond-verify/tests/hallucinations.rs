@@ -82,6 +82,7 @@ async fn every_symbolic_contradiction_has_a_trace() {
         calendar_event: Some(b.event.clone()),
         claims_artifact: b.summary.clone(),
         extra: vec![b.summary.clone()],
+        params: serde_json::Value::Null,
     };
     let out = VerifierRegistry::symbolic(cfg())
         .run(&claims, &ctx, None)

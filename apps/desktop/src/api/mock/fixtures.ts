@@ -32,6 +32,7 @@ export const thisDevice: DeviceInfo = {
   platform: "windows",
   app_version: "0.1.0",
   capabilities: ["gpu", "llm", "llm:qwen3.5:9b", "stt:vi", "stt:en", "stt-large", "diarize"],
+  last_active: null,
 };
 
 export const fedora: DeviceInfo = {
@@ -40,6 +41,7 @@ export const fedora: DeviceInfo = {
   platform: "linux",
   app_version: "0.1.0",
   capabilities: ["llm", "llm:gemma4:e4b", "stt:vi"],
+  last_active: null,
 };
 
 export const galaxy: DeviceInfo = {
@@ -48,6 +50,7 @@ export const galaxy: DeviceInfo = {
   platform: "android",
   app_version: "0.1.0",
   capabilities: ["stt:vi"],
+  last_active: null,
 };
 
 export function peers(now: number): PeerInfo[] {
@@ -292,6 +295,7 @@ export function summaryBundle(
     inputs: [summary.id],
   });
   const verdictsBody: Verdicts = {
+    errors: [],
     verdicts: flat.flatMap(([, cs, v], i) => {
       const [label, confidence, explanation] = v ?? (["supported", 0.93, "Cited span states the same fact."] as const);
       const ev = cs.map((c) => cite(transcript.id, c, segs));
@@ -445,6 +449,7 @@ export interface Seed {
 
 function meeting(partial: Partial<Meeting> & Pick<Meeting, "title" | "started_at">): Meeting {
   return {
+    tz: "Asia/Ho_Chi_Minh",
     id: ulid(partial.started_at),
     ended_at: partial.started_at + 30 * MIN,
     kind: { type: "online", app: "google_meet" },

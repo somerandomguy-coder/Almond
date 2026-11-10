@@ -34,6 +34,8 @@ pub struct VerifyContext {
     pub claims_artifact: Artifact,
     /// Any other artifacts (summary, earlier meetings' facts, ...).
     pub extra: Vec<Artifact>,
+    /// Job params (time zone override, thresholds, verifier subset, ...).
+    pub params: serde_json::Value,
 }
 
 #[async_trait]

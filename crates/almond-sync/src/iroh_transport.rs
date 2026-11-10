@@ -547,6 +547,7 @@ impl Transport for IrohTransport {
                                 platform: s.platform.unwrap_or_default(),
                                 app_version: String::new(),
                                 capabilities: vec![],
+                                last_active: None,
                             },
                             addrs,
                             paired: false,
@@ -562,16 +563,11 @@ impl Transport for IrohTransport {
 
     /// Manual `ip:port`. iroh authenticates peers by key, so the device id must be known
     /// (from the pairing QR, NSD TXT record, or the paired-devices list).
-    async fn add_addr(&self, device: Option<DeviceId>, addr: String) -> Result<()> {
+    async fn add_addr(&self, d: DeviceId, addr: String) -> Result<()> {
         let sa: SocketAddr = addr
             .trim()
             .parse()
             .map_err(|e| Error::Invalid(format!("address {addr:?}: {e}")))?;
-        let Some(d) = device else {
-            return Err(Error::Invalid(
-                "a device id is required with a manual address (iroh dials by key)".into(),
-            ));
-        };
         endpoint_id(&d)?;
         self.inner.book.note_addrs(&d, vec![sa.to_string()])?;
         self.inner.note_seen(d, vec![sa], None);

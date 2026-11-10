@@ -249,6 +249,7 @@ impl CalendarSource for GoogleCalendar {
             upserts,
             deletes,
             next_cursor: Some(serde_json::to_string(&next)?),
+            reset_calendars: vec![],
         })
     }
 }

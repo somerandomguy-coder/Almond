@@ -12,7 +12,8 @@ id: string,
  */
 text: string, 
 /**
- * Where the claim came from (e.g. summary artifact, section/bullet index as segment).
+ * Where the claim came from. For summaries: `artifact` = the summary's id and `segment` =
+ * the bullet's flat index across all sections (section 0's bullets first, then 1, ...).
  */
 source: SpanRef, 
 /**

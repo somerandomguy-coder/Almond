@@ -7,7 +7,8 @@ use almond_types::calendar::CalendarEvent;
 use almond_types::event::{Event, EventBody, EventKind};
 use almond_types::job::{Job, JobLease, JobOutcome, JobStatus};
 use almond_types::meeting::Meeting;
-use almond_types::store::{MeetingQuery, SearchHit, Store};
+pub use almond_types::store::BlobInfo;
+use almond_types::store::{JobRecord, MeetingQuery, SearchHit, Store};
 use almond_types::sync::{DeviceInfo, VersionVector};
 use almond_types::time::{HlcClock, UnixMs, now_ms};
 use almond_types::{BlobHash, DeviceId, Error, Hlc, Id, Result};
@@ -37,16 +38,6 @@ fn status_str(s: JobStatus) -> &'static str {
         JobStatus::Failed => "failed",
         JobStatus::Cancelled => "cancelled",
     }
-}
-
-/// A blob some device announced via `blob.available`.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct BlobInfo {
-    pub hash: BlobHash,
-    pub size: u64,
-    pub mime: String,
-    /// Devices that announced having it.
-    pub holders: Vec<DeviceId>,
 }
 
 struct Inner {
@@ -452,8 +443,7 @@ impl SqliteStore {
             .collect()
     }
 
-    /// All blobs announced through `blob.available` events.
-    pub fn known_blobs(&self) -> Result<Vec<BlobInfo>> {
+    fn known_blobs_impl(&self) -> Result<Vec<BlobInfo>> {
         let g = self.lock();
         let mut st = g
             .conn
@@ -517,6 +507,22 @@ impl SqliteStore {
             .sql()?;
         s.map(|s| serde_json::from_str(&s).map_err(Into::into))
             .transpose()
+    }
+
+    fn job_json<T: serde::de::DeserializeOwned>(
+        conn: &Connection,
+        sql: &str,
+        job: &Id,
+    ) -> Result<Vec<T>> {
+        let mut st = conn.prepare_cached(sql).sql()?;
+        let rows = st
+            .query_map(params![job.0], |r| r.get::<_, String>(0))
+            .sql()?
+            .collect::<rusqlite::Result<Vec<_>>>()
+            .sql()?;
+        rows.iter()
+            .map(|s| serde_json::from_str(s).map_err(Into::into))
+            .collect()
     }
 
     /// Total events in the log (all authors).
@@ -825,6 +831,14 @@ impl Store for SqliteStore {
     }
 
     fn jobs(&self, status: Option<JobStatus>) -> Result<Vec<(Job, JobStatus)>> {
+        Ok(self
+            .job_records(status)?
+            .into_iter()
+            .map(|r| (r.job, r.status))
+            .collect())
+    }
+
+    fn job_records(&self, status: Option<JobStatus>) -> Result<Vec<JobRecord>> {
         let g = self.lock();
         let now = now_ms();
         let mut st = g
@@ -839,18 +853,33 @@ impl Store for SqliteStore {
         let mut out = vec![];
         for s in rows {
             let job: Job = serde_json::from_str(&s)?;
-            let st = if let Some(o) = Self::latest_outcome(&g.conn, &job.id)? {
-                o.status
-            } else if Self::active_lease(&g.conn, &job.id, now)?.is_some() {
-                JobStatus::Claimed
-            } else {
-                JobStatus::Pending
-            };
+            let leases: Vec<JobLease> = Self::job_json(
+                &g.conn,
+                "SELECT data FROM job_claims WHERE job_id = ?1
+                 ORDER BY claimed_wall, claimed_logical, device",
+                &job.id,
+            )?;
+            let outcomes: Vec<JobOutcome> = Self::job_json(
+                &g.conn,
+                "SELECT data FROM job_outcomes WHERE job_id = ?1
+                 ORDER BY hlc_wall, hlc_logical, device",
+                &job.id,
+            )?;
+            let st = JobStatus::derive(&outcomes, leases.iter().any(|l| l.expires_at > now));
             if status.is_none_or(|x| x == st) {
-                out.push((job, st));
+                out.push(JobRecord {
+                    job,
+                    status: st,
+                    leases,
+                    outcomes,
+                });
             }
         }
         Ok(out)
+    }
+
+    fn known_blobs(&self) -> Result<Vec<BlobInfo>> {
+        self.known_blobs_impl()
     }
 
     fn search(&self, text: &str, limit: u32) -> Result<Vec<SearchHit>> {

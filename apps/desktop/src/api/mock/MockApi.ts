@@ -330,6 +330,7 @@ export class MockApi implements AlmondApi {
       const m: Meeting = {
         id: ulid(now),
         title: p.title ?? ev?.title ?? "",
+        tz: Intl.DateTimeFormat().resolvedOptions().timeZone ?? null,
         started_at: now,
         ended_at: null,
         kind: p.kind,
@@ -604,7 +605,7 @@ export class MockApi implements AlmondApi {
             this.emit("sync.progress", { peer, phase: "done", done: total, total });
             p.last_synced = Date.now();
             p.last_seen = Date.now();
-            return { peer, events_sent: i === 0 ? 12 : 5, events_received: total - (i === 0 ? 12 : 5), blobs_sent: 0, blobs_received: blobs, duration_ms: Date.now() - t0, error: null };
+            return { peer, events_sent: i === 0 ? 12 : 5, events_received: total - (i === 0 ? 12 : 5), blobs_sent: 0, blobs_received: blobs, duration_ms: Date.now() - t0, error: null, status: "ok" as const };
           }),
         );
         this.lastReports = reports;
@@ -625,7 +626,7 @@ export class MockApi implements AlmondApi {
         throw new ApiError(-32602, "invalid pairing code: expected 6 words");
       }
       const peer: PeerInfo = {
-        device: { id: `dev-${ulid().slice(-8).toLowerCase()}`, name: "Office desktop", platform: "linux", app_version: "0.1.0", capabilities: ["llm"] },
+        device: { id: `dev-${ulid().slice(-8).toLowerCase()}`, name: "Office desktop", platform: "linux", app_version: "0.1.0", capabilities: ["llm"], last_active: null },
         addrs: ["192.168.1.57:47321"],
         paired: true,
         last_seen: Date.now(),

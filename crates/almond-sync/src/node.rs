@@ -69,6 +69,7 @@ impl SyncNode {
             platform: cfg.platform.clone(),
             app_version: cfg.app_version.clone(),
             capabilities: cfg.capabilities.clone(),
+            last_active: None,
         };
         let store = Arc::new(SqliteStore::open(
             cfg.data_dir.join("almond.db"),

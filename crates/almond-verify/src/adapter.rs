@@ -79,6 +79,7 @@ pub fn build_context(
             calendar_event,
             claims_artifact: claims_art,
             extra: rest,
+            params: serde_json::Value::Null,
         },
         claims,
     ))
@@ -203,7 +204,10 @@ impl Processor for VerifyProcessor {
         };
         Ok(vec![ArtifactDraft::new(
             ctx.meeting.id.clone(),
-            &Verdicts { verdicts },
+            &Verdicts {
+                verdicts,
+                errors: vec![],
+            },
             prov,
         )?])
     }
