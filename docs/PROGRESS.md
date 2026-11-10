@@ -3,8 +3,10 @@
 Plan: [PLAN.md](PLAN.md). **Phase 0** (contracts, tag `m0-contracts`) and **Phase 1** (7 parallel
 workstreams, tag `m1-workstreams`) are done and merged into `main`. The batched contract changes are
 on `main` too ([contract-requests/RESOLVED.md](contract-requests/RESOLVED.md)).
-**Next: Phase 2, integration** — the parts work on their own but are not wired into the app yet;
-the desktop UI still runs on its mock API.
+**Phase 2 (integration)**: the core and its three modules (capture, processing, library) are
+merged (tag `m2-modules`), and the desktop app runs on the real back end. Start it with GPU speech
+engines via `scripts\dev-gpu.cmd`. **Next:** a real end-to-end check in the app (record a Meet
+call), then sync with the Fedora laptop and a real Google sign-in.
 
 ## Phase 1 — what each part does (all on `main`)
 
@@ -34,15 +36,24 @@ Tests: 282 Rust + 18 UI pass; clippy `-D warnings` clean.
   `crates\almond-stt\scripts\cargo-cuda.cmd` (target dir `%USERPROFILE%\.almond\t`).
 - Models in `%USERPROFILE%\.almond\models`; eval data in `%USERPROFILE%\.almond\eval` (not committed).
 
-## Phase 2 — to do
+## Phase 2 — status
 
-1. `almond-core` facade: own the store, sync, pipeline, audio, STT, LLM, calendar, verify; JSON-RPC.
-2. Tauri commands per docs/API.md; switch the UI from the mock to the real API.
-3. End to end on the PC: record a Meet call → live captions → stop → transcript → summary, notes,
-   action items, fact-check → shown in the app.
-4. Sync PC ↔ Fedora laptop; Google sign-in with the user's own OAuth client.
-5. Speed: run diarization concurrently with transcription (it is ~80 % of post-meeting time).
-6. Follow-ups listed in [RESOLVED.md](contract-requests/RESOLVED.md#phase-2-integration-work-that-these-unlock).
+Done, each verified through the core with integration tests ([PHASE2.md](PHASE2.md) has the briefs):
+- **capture**: recording (mic + loopback, crash recovery, lost-loopback = silence), live captions,
+  `transcribe.local` with concurrent fast diarization. The 30-min meeting takes **82 s** on an idle
+  GPU (WER 6.7 %, remote speakers 94.5 %).
+- **processing**: the job loop plans and runs everything automatically; LLM + fact-check processors;
+  offload to a peer over sync is tested. A real `gemma4:12b` run on the 30-min transcript takes
+  ~6 min for all jobs.
+- **library**: meetings, notes, search, ICS + Google (mocked) calendars, reminders, Gmail context,
+  pairing and sync between cores, storage usage.
+
+To do:
+1. A real-app check by the user: record a call, captions, Stop, then the artifacts appear.
+2. Sync with the Fedora laptop (build the app there); a real Google sign-in with the user's OAuth client.
+3. Enhanced notes are thin when the user typed nothing — build them from the summary.
+4. Open contract requests: `docs/contract-requests/i-*.md` (activity hook for every method,
+   `RecordingStatus.lost`, `sync.paired` notification, typed `StorageUsage`, ...).
 
 ## Known issues
 
