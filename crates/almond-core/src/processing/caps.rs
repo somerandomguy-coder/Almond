@@ -45,6 +45,10 @@ pub struct CapsInfo {
     pub llm_models: Vec<LlmModelInfo>,
     /// Why no LLM is available (Ollama unreachable, ...).
     pub llm_error: Option<String>,
+    /// The Ollama the models above come from (and LLM jobs go to).
+    pub llm_url: Option<String>,
+    /// `llm_url` is the remote Ollama (setting `llm.remote_ollama_url`), not this device's.
+    pub llm_remote: bool,
 }
 
 impl CapsInfo {
@@ -117,21 +121,35 @@ pub(crate) async fn detect(core: &Core, st: &State) -> CapsInfo {
     if info.gpu.is_some() {
         info.capabilities.push(Capability::new("gpu"));
     }
-    match st.llm_provider(core) {
-        // A busy Ollama (shared GPU, model loading) can take seconds to list its models.
-        Ok(p) => match tokio::time::timeout(Duration::from_secs(20), p.list_models()).await {
-            Ok(Ok(models)) => info.llm_models = models,
-            Ok(Err(e)) => info.llm_error = Some(e.to_string()),
-            Err(_) => {
-                // Slow, not gone: keep the last known models rather than dropping `llm`.
-                info.llm_models = st.caps.lock().unwrap().llm_models.clone();
-                info.llm_error = Some(format!(
-                    "{} did not answer in 20 s",
-                    super::ollama_url(core)
-                ));
-            }
-        },
-        Err(e) => info.llm_error = Some(e.to_string()),
+    // A stronger machine's Ollama (home PC over Tailscale) wins whenever it answers quickly.
+    let remote = probe_remote(core).await;
+    st.set_remote_live(remote.as_ref().map(|(u, _)| u.clone()));
+    if let Some((url, models)) = remote {
+        info.llm_models = models;
+        info.llm_url = Some(url);
+        info.llm_remote = true;
+    } else {
+        info.llm_url = Some(super::local_ollama_url(core));
+        match st.llm_provider(core) {
+            // A busy Ollama (shared GPU, model loading) can take seconds to list its models.
+            Ok(p) => match tokio::time::timeout(Duration::from_secs(20), p.list_models()).await {
+                Ok(Ok(models)) => info.llm_models = models,
+                Ok(Err(e)) => info.llm_error = Some(e.to_string()),
+                Err(_) => {
+                    // Slow, not gone: keep the last known models rather than dropping `llm`
+                    // (unless they were the remote Ollama's).
+                    let prev = st.caps.lock().unwrap().clone();
+                    if !prev.llm_remote {
+                        info.llm_models = prev.llm_models;
+                    }
+                    info.llm_error = Some(format!(
+                        "{} did not answer in 20 s",
+                        super::ollama_url(core)
+                    ));
+                }
+            },
+            Err(e) => info.llm_error = Some(e.to_string()),
+        }
     }
     let mut any_chat = false;
     for m in &info.llm_models {
@@ -153,6 +171,37 @@ pub(crate) async fn detect(core: &Core, st: &State) -> CapsInfo {
     info.capabilities.sort();
     info.capabilities.dedup();
     info
+}
+
+/// How long the remote Ollama may take to list its models before this device falls back to its
+/// own. Short: over Tailscale an answering PC replies in well under a second.
+const REMOTE_PROBE: Duration = Duration::from_secs(4);
+
+/// The remote Ollama's URL and chat/embedding models, if it is configured and answers.
+async fn probe_remote(core: &Core) -> Option<(String, Vec<LlmModelInfo>)> {
+    use almond_llm::{Ollama, OllamaConfig};
+    use almond_types::llm::LlmProvider;
+    let url = super::remote_ollama_setting(core)?;
+    let p = Ollama::new(OllamaConfig {
+        base_url: url.clone(),
+        ..OllamaConfig::from_env()
+    })
+    .ok()?;
+    match tokio::time::timeout(REMOTE_PROBE, p.list_models()).await {
+        Ok(Ok(models)) if !models.is_empty() => Some((url, models)),
+        Ok(Ok(_)) => {
+            tracing::debug!("remote Ollama {url} has no models; using the local one");
+            None
+        }
+        Ok(Err(e)) => {
+            tracing::debug!("remote Ollama {url}: {e}");
+            None
+        }
+        Err(_) => {
+            tracing::debug!("remote Ollama {url} did not answer in {REMOTE_PROBE:?}");
+            None
+        }
+    }
 }
 
 /// Record this device's detected capabilities in the replicated device list (if they changed).
@@ -188,7 +237,7 @@ fn pick(info: &CapsInfo, preferred: &[&str], embed: bool) -> Option<String> {
 
 /// Default slots for this device.
 pub fn default_slots(info: &CapsInfo) -> Vec<ModelSlot> {
-    let preferred = if info.gpu.is_some() {
+    let preferred = if info.gpu.is_some() || info.llm_remote {
         PREFERRED_GPU
     } else {
         PREFERRED_CPU
@@ -250,6 +299,20 @@ pub(crate) fn slot_model(core: &Core, info: &CapsInfo, task: &str, lang: Option<
         .and_then(|l| for_task(Some(l)))
         .or_else(|| for_task(None))
         .unwrap_or_else(|| default_slots(info)[0].model.clone());
+    // With a remote Ollama configured, a slot chosen for the PC's Ollama may not exist on this
+    // device's (the fallback) and vice versa: use the endpoint's default instead of failing.
+    // Without one, a missing model fails the job loudly (`ollama pull ...`).
+    if super::remote_ollama_setting(core).is_some()
+        && !info.llm_models.is_empty()
+        && !info.has_model(&m)
+    {
+        let d = default_slots(info)
+            .into_iter()
+            .find(|s| s.task == task || (task != SLOT_EMBED && s.task == SLOT_LLM_SUMMARY))
+            .map(|s| s.model)
+            .unwrap_or(m);
+        return ollama_name(&d).to_string();
+    }
     ollama_name(&m).to_string()
 }
 
@@ -324,5 +387,9 @@ mod tests {
         assert!(info(true, &all).has_model("ollama:gemma4:12b"));
         assert_eq!(none.len(), 2);
         assert!(info(false, &["qwen3.5"]).has_model("qwen3.5:latest"));
+        // The home PC's Ollama over Tailscale counts as a GPU device.
+        let mut remote = info(false, &all);
+        remote.llm_remote = true;
+        assert_eq!(default_slots(&remote)[0].model, "ollama:gemma4:12b");
     }
 }

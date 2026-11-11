@@ -18,6 +18,13 @@ pub mod keys {
     pub const SYNC_AUTO_WHILE_OPEN: &str = "sync.auto_while_open";
     pub const GOOGLE_OAUTH_CLIENT: &str = "google.oauth_client";
     pub const OLLAMA_URL: &str = "llm.ollama_url";
+    /// A stronger machine's Ollama (e.g. the home PC over Tailscale, `http://100.x.y.z:11434`).
+    /// Used instead of the local one whenever it answers; the local one is the fallback.
+    pub const REMOTE_OLLAMA_URL: &str = "llm.remote_ollama_url";
+    /// Job offload policy (`processing::offload`): `"local"` (default) or `"prefer_peer"`.
+    pub const OFFLOAD: &str = "processing.offload";
+    /// `prefer_peer`: minutes a job waits for the stronger peer before running here anyway.
+    pub const OFFLOAD_WAIT_MIN: &str = "processing.offload_wait_min";
     pub const MODEL_SLOTS: &str = "models.slots";
 }
 

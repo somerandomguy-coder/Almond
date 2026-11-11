@@ -73,6 +73,21 @@ async fn pair_and_sync_meeting_with_notes() {
     .await;
     assert_eq!(peer["device"]["id"], ida.as_str());
     assert_eq!(peer["paired"], true);
+    // pairAccept starts a first sync in the background; let it finish so the meeting below is
+    // new to B (otherwise, on a fast machine, that sync may already carry it and B's own
+    // `sync.now` receives nothing new).
+    let t0 = std::time::Instant::now();
+    loop {
+        let st = call(&b, "sync.status", json!({})).await;
+        let done = st["last_reports"]
+            .as_array()
+            .is_some_and(|v| v.iter().any(|r| r["peer"] == ida.as_str()));
+        if done && st["syncing"] == false {
+            break;
+        }
+        assert!(t0.elapsed() < Duration::from_secs(20), "first sync: {st}");
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
 
     // ---- A writes a meeting with notes; B syncs and sees both
     let m = call(

@@ -104,6 +104,20 @@ impl Speech {
         }
         let mgr = self.manager()?;
         let entry = mgr.entry(id)?;
+        // Say "not compiled in" before "not installed": downloading won't help a build without
+        // the engine (and this makes the error independent of which models a machine has).
+        let compiled = match entry.engine.as_str() {
+            "whisper" => cfg!(feature = "whisper"),
+            "sherpa-transducer" => cfg!(feature = "sherpa"),
+            _ => false,
+        };
+        if !compiled {
+            return Err(Error::Unsupported(format!(
+                "speech engine {:?} (model {id}) is not compiled into this build; \
+                 build with --features whisper,sherpa (cuda on the GPU PC)",
+                entry.engine
+            )));
+        }
         if !mgr.is_installed(id) {
             return Err(Error::NotFound(format!(
                 "speech model {id} is not installed (download it under Settings → Models)"

@@ -85,11 +85,17 @@ pub enum RunResult {
 
 type NowFn = Arc<dyn Fn() -> UnixMs + Send + Sync>;
 
+/// Device policy: `true` = leave this job for another device for now (e.g. a laptop leaving
+/// heavy jobs for the home PC). Asked only for jobs this device could claim; a job this device
+/// already holds a lease on is never deferred.
+pub type DeferFn = Arc<dyn Fn(&Job) -> bool + Send + Sync>;
+
 pub struct JobRunner {
     store: Arc<dyn Store>,
     registry: Arc<ProcessorRegistry>,
     blobs: Arc<dyn BlobStore>,
     caps: RwLock<Vec<Capability>>,
+    defer: RwLock<Option<DeferFn>>,
     cfg: RunnerConfig,
     clock: HlcClock,
     now: NowFn,
@@ -115,6 +121,7 @@ impl JobRunner {
             registry,
             blobs,
             caps: RwLock::new(capabilities),
+            defer: RwLock::new(None),
             cfg,
             clock: HlcClock::new(),
             now: Arc::new(now_ms),
@@ -140,6 +147,15 @@ impl JobRunner {
     /// Replace the advertised capabilities (e.g. after Ollama started or a model was pulled).
     pub fn set_capabilities(&self, caps: Vec<Capability>) {
         *self.caps.write().unwrap_or_else(|p| p.into_inner()) = caps;
+    }
+
+    /// Set (or clear) the device's defer policy, see [`DeferFn`].
+    pub fn set_defer(&self, f: Option<DeferFn>) {
+        *self.defer.write().unwrap() = f;
+    }
+
+    fn deferred(&self, job: &Job) -> bool {
+        self.defer.read().unwrap().as_ref().is_some_and(|f| f(job))
     }
 
     /// Advertised capabilities incl. the implicit `device:<id>`.
@@ -348,7 +364,9 @@ impl JobRunner {
             }
             match s.live_lease(now) {
                 Some(l) if l.device != me => continue, // someone else is on it
-                _ => {}
+                Some(_) => {}                          // ours: never defer a job we hold
+                None if self.deferred(&s.job) => continue, // left for a stronger peer
+                None => {}
             }
             if !self.inputs_ready(&s.job)? {
                 continue; // inputs not synced yet

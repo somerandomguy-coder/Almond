@@ -15,6 +15,7 @@ mod actions;
 mod api;
 pub mod caps;
 mod jobloop;
+mod offload;
 mod procs;
 mod stubs;
 
@@ -61,6 +62,8 @@ pub struct State {
     /// Wakes the job loop (new local work, API calls).
     pub(crate) wake: Arc<Notify>,
     llm: Mutex<LlmSource>,
+    /// The remote Ollama (setting `llm.remote_ollama_url`) when it answered the last probe.
+    remote_live: Mutex<Option<String>>,
     /// Serializes capability refreshes so the latest one wins.
     caps_lock: tokio::sync::Mutex<()>,
     pub(crate) caps: Mutex<CapsInfo>,
@@ -112,6 +115,7 @@ impl State {
             core,
             wake: Arc::new(Notify::new()),
             llm: Mutex::new(LlmSource::default()),
+            remote_live: Mutex::new(None),
             caps_lock: tokio::sync::Mutex::new(()),
             caps: Mutex::new(CapsInfo::default()),
             progress: Mutex::new(HashMap::new()),
@@ -188,15 +192,73 @@ impl State {
         info
     }
 
+    /// Remote Ollama URL in use (it answered the last capability probe), if any.
+    pub fn remote_ollama_live(&self) -> Option<String> {
+        self.remote_live.lock().unwrap().clone()
+    }
+
+    pub(crate) fn set_remote_live(&self, url: Option<String>) {
+        let mut cur = self.remote_live.lock().unwrap();
+        if *cur != url {
+            match &url {
+                Some(u) => tracing::info!("LLM: using the remote Ollama at {u}"),
+                None => tracing::info!("LLM: using the local Ollama"),
+            }
+            *cur = url;
+        }
+    }
+
     fn spawn(&self, f: impl std::future::Future<Output = ()> + Send + 'static) {
         self.tasks.lock().unwrap().push(tokio::spawn(f));
     }
 }
 
-/// `core.ollama_url()` made connectable: `OLLAMA_HOST=0.0.0.0:11434` (a server bind address, set
-/// on this PC) becomes `http://127.0.0.1:11434`.
+/// The Ollama LLM calls go to: the remote one (setting `llm.remote_ollama_url`) while it answers,
+/// else `core.ollama_url()` made connectable (`OLLAMA_HOST=0.0.0.0:11434`, a server bind address,
+/// becomes `http://127.0.0.1:11434`).
 pub(crate) fn ollama_url(core: &Core) -> String {
+    core.processing
+        .remote_ollama_live()
+        .unwrap_or_else(|| local_ollama_url(core))
+}
+
+pub(crate) fn local_ollama_url(core: &Core) -> String {
     almond_llm::ollama::normalize_host(&core.ollama_url())
+}
+
+/// Setting `llm.remote_ollama_url`, normalized (`100.80.179.59` -> `http://100.80.179.59:11434`).
+pub(crate) fn remote_ollama_setting(core: &Core) -> Option<String> {
+    core.setting_as::<String>(crate::settings::keys::REMOTE_OLLAMA_URL)
+        .ok()
+        .flatten()
+        .and_then(|s| normalize_remote(&s))
+}
+
+/// `host`, `host:port` or a URL -> a URL with a port (Ollama's 11434 when none is given).
+fn normalize_remote(raw: &str) -> Option<String> {
+    let raw = raw.trim().trim_end_matches('/');
+    if raw.is_empty() {
+        return None;
+    }
+    let (scheme, rest) = raw.split_once("://").unwrap_or(("http", raw));
+    let (authority, path) = rest.split_once('/').unwrap_or((rest, ""));
+    let has_port = authority.rsplit_once(':').is_some_and(|(h, p)| {
+        !p.is_empty()
+            && p.bytes().all(|b| b.is_ascii_digit())
+            && !h.is_empty()
+            && (!h.contains(':') || h.ends_with(']'))
+    });
+    let authority = if has_port {
+        authority.to_string()
+    } else {
+        format!("{authority}:11434")
+    };
+    let path = if path.is_empty() {
+        String::new()
+    } else {
+        format!("/{path}")
+    };
+    Some(format!("{scheme}://{authority}{path}"))
 }
 
 pub(crate) fn register(r: &mut Router) {
@@ -205,5 +267,37 @@ pub(crate) fn register(r: &mut Router) {
 
 pub(crate) fn start(core: Arc<Core>) {
     let _ = core.processing.core.0.set(Arc::downgrade(&core));
+    core.processing
+        .runner
+        .set_defer(Some(offload::defer_fn(Arc::downgrade(&core))));
     jobloop::start(&core);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::normalize_remote;
+
+    #[test]
+    fn remote_url_normalization() {
+        let n = |s: &str| normalize_remote(s);
+        assert_eq!(
+            n("100.80.179.59").as_deref(),
+            Some("http://100.80.179.59:11434")
+        );
+        assert_eq!(
+            n(" 100.80.179.59:8080/ ").as_deref(),
+            Some("http://100.80.179.59:8080")
+        );
+        assert_eq!(
+            n("http://pc.tail1234.ts.net").as_deref(),
+            Some("http://pc.tail1234.ts.net:11434")
+        );
+        assert_eq!(n("https://pc:443").as_deref(), Some("https://pc:443"));
+        assert_eq!(n("[fd7a::1]").as_deref(), Some("http://[fd7a::1]:11434"));
+        assert_eq!(
+            n("http://[fd7a::1]:9000").as_deref(),
+            Some("http://[fd7a::1]:9000")
+        );
+        assert_eq!(n("  "), None);
+    }
 }

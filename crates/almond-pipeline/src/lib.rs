@@ -21,4 +21,4 @@ pub use almond_types as types;
 pub use jobs::{JobState, job_states};
 pub use planner::{PlanPolicy, PlannedJob};
 pub use registry::ProcessorRegistry;
-pub use runner::{JobRequest, JobRunner, RunResult, RunnerConfig};
+pub use runner::{DeferFn, JobRequest, JobRunner, RunResult, RunnerConfig};

@@ -9,7 +9,8 @@
 //!   every 15 s (expired leases of vanished devices, audio blobs that arrived by sync).
 //! - **Progress forwarder**: runner progress → `job.progress`, plus the last value per job for
 //!   `jobs.list`.
-//! - Capabilities are re-detected every minute (Ollama started later, model pulled, ...).
+//! - Capabilities are re-detected every minute (Ollama started later, model pulled, ...), every
+//!   20 s while a remote Ollama is configured (it comes and goes with the network).
 
 use crate::Core;
 use almond_pipeline::planner::latest_live;
@@ -28,6 +29,8 @@ use tokio::sync::{Notify, broadcast};
 const SCAN_EVERY: Duration = Duration::from_millis(500);
 const WORK_EVERY: Duration = Duration::from_secs(15);
 const CAPS_EVERY: Duration = Duration::from_secs(60);
+/// With a remote Ollama configured: notice quickly when it comes and goes (laptop leaves home).
+const CAPS_EVERY_REMOTE: Duration = Duration::from_secs(20);
 const BATCH: usize = 2_000;
 
 pub(crate) fn start(core: &Arc<Core>) {
@@ -114,7 +117,12 @@ async fn scanner(weak: Weak<Core>, work: Arc<Notify>) {
             _ = tokio::time::sleep(SCAN_EVERY) => {}
         }
         let Some(core) = weak.upgrade() else { return };
-        if caps_at.elapsed() >= CAPS_EVERY {
+        let every = if super::remote_ollama_setting(&core).is_some() {
+            CAPS_EVERY_REMOTE
+        } else {
+            CAPS_EVERY
+        };
+        if caps_at.elapsed() >= every {
             caps_at = Instant::now();
             core.processing.refresh_capabilities(&core).await;
         }
