@@ -5,6 +5,7 @@ import type { i18n as I18n } from "i18next";
 import { ApiProvider } from "./api/context";
 import type { AlmondApi } from "./api/types";
 import { Shell } from "./components/Shell";
+import { Cookbook } from "./screens/Cookbook";
 import { Devices } from "./screens/Devices";
 import { Home } from "./screens/Home";
 import { MeetingScreen } from "./screens/Meeting";
@@ -19,6 +20,7 @@ export function AppRoutes() {
         <Route path="meeting/:id" element={<MeetingScreen />} />
         <Route path="devices" element={<Devices />} />
         <Route path="settings" element={<Settings />} />
+        <Route path="cookbook" element={<Cookbook />} />
         <Route path="*" element={<Home />} />
       </Route>
     </Routes>

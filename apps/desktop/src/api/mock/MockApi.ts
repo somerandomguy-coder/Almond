@@ -26,6 +26,9 @@ import { fold, snippet } from "../../lib/text";
 import type { AlmondApi, ApiNotifications, Method, NotificationName, Params, Result, Unlisten } from "../types";
 import { ApiError } from "../errors";
 import * as fx from "./fixtures";
+import { builtinRecipes, mockRecipeOutput } from "./recipes";
+import type { RecipeInfo } from "../types";
+import type { Transcript as TranscriptBody } from "../../gen/Transcript";
 
 export interface MockOptions {
   /** Time multiplier: 1 = realistic pacing, 20 = tests. */
@@ -69,6 +72,8 @@ export class MockApi implements AlmondApi {
   private chatCancels = new Set<string>();
   /** Tests: make `chat.ask` fail as it does when Ollama isn't running. */
   llmDown = false;
+  /** Cookbook (recipes.*): built-ins first, then user recipes. */
+  recipes: RecipeInfo[] = builtinRecipes();
   /** What the mock "file picker" returns (`null` = the user closed it). Tests may change it. */
   pickedFile: string | null = "C:\\Users\\me\\Recordings\\Phỏng vấn khách hàng.m4a";
 
@@ -853,6 +858,75 @@ export class MockApi implements AlmondApi {
     "settings.set": function ({ key, value }) {
       this.settings.set(key, value);
       return null;
+    },
+
+    // ---- recipes (cookbook) ----
+    "recipes.list": function () {
+      return this.recipes.map((r) => ({ ...r }));
+    },
+    "recipes.save": function (p) {
+      const cur = p.id ? this.recipes.find((r) => r.id === p.id) : undefined;
+      if (p.id && !cur) throw new ApiError(-32004, `recipe not found: ${p.id}`);
+      const next: RecipeInfo = {
+        ...(cur ?? { id: "", name: "", description: "", icon: null, prompt: "", auto_run: false, builtin: false, updated_at: 0, hidden: false }),
+        ...(p.name != null && { name: p.name.trim() }),
+        ...(p.description != null && { description: p.description.trim() }),
+        ...(p.icon != null && { icon: p.icon.trim() || null }),
+        ...(p.prompt != null && { prompt: p.prompt.trim() }),
+        ...(p.auto_run != null && { auto_run: p.auto_run }),
+        ...(p.hidden != null && { hidden: p.hidden }),
+        updated_at: Date.now(),
+      };
+      if (!next.name) throw new ApiError(-32602, "a recipe needs a name");
+      if (!next.prompt) throw new ApiError(-32602, "a recipe needs a prompt");
+      const changed = cur && (cur.name !== next.name || cur.description !== next.description || cur.icon !== next.icon || cur.prompt !== next.prompt);
+      if (!cur || (cur.builtin && changed)) {
+        // New recipe, or an edited built-in saved as a copy.
+        const copy = { ...next, id: ulid(), builtin: false, hidden: false };
+        this.recipes.push(copy);
+        return { ...copy };
+      }
+      Object.assign(cur, next);
+      return { ...cur };
+    },
+    "recipes.delete": function ({ id }) {
+      if (id.startsWith("builtin:")) throw new ApiError(-32602, "built-in recipes can't be deleted; hide them instead");
+      const i = this.recipes.findIndex((r) => r.id === id);
+      if (i < 0) throw new ApiError(-32004, `recipe not found: ${id}`);
+      this.recipes.splice(i, 1);
+      return null;
+    },
+    "recipes.run": function ({ recipe_id, meeting_id, extra }) {
+      const recipe = this.recipes.find((r) => r.id === recipe_id);
+      if (!recipe) throw new ApiError(-32004, `recipe not found: ${recipe_id}`);
+      this.meeting(meeting_id);
+      const transcript = this.artifactsFor(meeting_id, "transcript")[0];
+      if (!transcript) throw new ApiError(-32602, "this meeting has no transcript yet; run recipes once it is transcribed");
+      const job = this.newJob(meeting_id, "recipe.llm", [transcript.id], { recipe_id, extra: extra ?? null }, ["llm"]);
+      void this.runJob(job, recipe.name, 1500, () => {
+        const prev = this.artifactsFor(meeting_id, "recipe_output").find((a) => (a.body as { recipe_id?: string }).recipe_id === recipe_id);
+        const segs = (transcript.body as unknown as TranscriptBody).segments;
+        this.addArtifact(
+          fx.makeArtifact(
+            { meeting_id, device: fx.thisDevice.id, wall: Date.now() },
+            "recipe_output",
+            mockRecipeOutput(recipe, transcript.id, segs, extra),
+            { processor: `recipe.llm/${recipe_id}`, model: "ollama:gemma4:12b@mock", inputs: [transcript.id] },
+            prev?.id ?? null,
+          ),
+        );
+      });
+      return job;
+    },
+    "recipes.outputs": function ({ meeting_id }) {
+      const superseded = new Set(this.artifacts.map((a) => a.supersedes).filter(Boolean));
+      const seen = new Set<string>();
+      return this.artifactsFor(meeting_id, "recipe_output").filter((a) => {
+        const rid = (a.body as { recipe_id?: string }).recipe_id ?? "";
+        if (superseded.has(a.id) || seen.has(rid)) return false;
+        seen.add(rid);
+        return true;
+      });
     },
   };
 }

@@ -20,10 +20,11 @@ import { ActionsPanel, AudioBar, EnhancedNotesView, JobsList } from "../componen
 import { ActionItemsView, SummaryView } from "../components/meeting/SummaryView";
 import { NotesEditor } from "../components/NotesEditor";
 import { AskAlmond } from "../components/chat/AskAlmond";
+import { RecipesPanel } from "../components/recipes/RecipesPanel";
 import { TranscriptPanel, type TranscriptLine } from "../components/TranscriptPanel";
 import { Button, cx, ErrorNote, Icon, Loading, Spinner } from "../components/ui";
 
-type Tab = "notes" | "summary" | "ask" | "actions" | "transcript";
+type Tab = "notes" | "summary" | "recipes" | "ask" | "actions" | "transcript";
 
 function VuMeter({ levels }: { levels: [string, number][] }) {
   return (
@@ -242,6 +243,7 @@ function MeetingView({ detail }: { detail: MeetingDetail }) {
   const tabs: { id: Tab; label: string; mobileOnly?: boolean }[] = [
     { id: "notes", label: t("meeting.tabs.notes") },
     { id: "summary", label: t("meeting.tabs.summary") },
+    { id: "recipes", label: t("recipes.tab") },
     { id: "ask", label: t("chat.tab") },
     { id: "actions", label: t("meeting.tabs.actions") },
     { id: "transcript", label: t("meeting.tabs.transcript"), mobileOnly: true },
@@ -374,6 +376,7 @@ function MeetingView({ detail }: { detail: MeetingDetail }) {
                   onOpenSource={(s) => (s.meeting_id === id && s.span ? (jump(s.span), true) : false)}
                 />
               )}
+              {leftTab === "recipes" && <RecipesPanel meetingId={id} artifacts={artifacts} jobs={[...jobs.values()]} hasTranscript={!!transcriptArt} />}
               {leftTab === "actions" && (
                 <>
                   <ActionsPanel meetingId={id} artifacts={artifacts} />
