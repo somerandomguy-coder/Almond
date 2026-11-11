@@ -170,11 +170,19 @@ impl Processor for RecipeProcessor {
         };
         let t0 = Instant::now();
         let (answer, info_model, calls) = run.answer(&context, p.extra.as_deref()).await?;
-        let (markdown, citations, cstats) = cites::renumber(&cites::clean_answer(&answer), &view);
+        let (mut markdown, citations, cstats) =
+            cites::renumber(&cites::clean_answer(&answer), &view);
         if markdown.trim().is_empty() {
             return Err(Error::Invalid(format!(
                 "model {model} returned an empty answer"
             )));
+        }
+        if recipe.id == builtins::COMMUNICATION {
+            // The numbers reach the user straight from the code, not through the model.
+            let table = stats::render_section(&stats::compute(&view), &lang.primary());
+            if !table.is_empty() {
+                markdown = format!("{table}\n\n{markdown}");
+            }
         }
         log_stats(&recipe, &cstats, calls, t0);
 

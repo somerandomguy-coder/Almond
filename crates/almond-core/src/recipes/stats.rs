@@ -293,6 +293,72 @@ pub fn render(st: &ConversationStats) -> String {
     s
 }
 
+/// The statistics as a Markdown section for the user (Vietnamese or English), placed above the
+/// model's answer by recipes that report numbers: the numbers never pass through the model.
+pub fn render_section(st: &ConversationStats, lang: &str) -> String {
+    if st.speakers.is_empty() {
+        return String::new();
+    }
+    let vi = lang == "vi";
+    let (title, you, head, note) = if vi {
+        (
+            "Thống kê",
+            "Bạn",
+            "| Người nói | Thời lượng nói | Tỷ lệ | Lượt nói | Lượt dài nhất | Từ/phút | Ngắt lời người khác | Bị ngắt lời | Từ đệm |",
+            format!(
+                "_Tính từ bản ghi: cuộc trò chuyện dài {}; ngắt lời = bắt đầu nói (ít nhất {} giây) khi người khác còn hơn {} ms; từ đệm là ước lượng theo từ khoá._",
+                mmss(st.span_ms),
+                MIN_INTERRUPT_MS / 1000,
+                OVERLAP_MS
+            ),
+        )
+    } else {
+        (
+            "Statistics",
+            "You",
+            "| Speaker | Talk time | Share | Turns | Longest turn | Words/min | Interrupted others | Was interrupted | Filler words |",
+            format!(
+                "_Computed from the transcript: {} of conversation; an interruption is starting to speak (for at least {} s) while someone else had more than {} ms to go; filler words are a keyword estimate._",
+                mmss(st.span_ms),
+                MIN_INTERRUPT_MS / 1000,
+                OVERLAP_MS
+            ),
+        )
+    };
+    let mut s = format!("## {title}\n\n{head}\n|---|---|---|---|---|---|---|---|---|\n");
+    for x in &st.speakers {
+        let fillers = if x.fillers.is_empty() {
+            "0".to_string()
+        } else {
+            let top: Vec<String> = x
+                .fillers
+                .iter()
+                .take(3)
+                .map(|(w, n)| format!("{w} ×{n}"))
+                .collect();
+            format!("{} ({})", x.fillers_total, top.join(", "))
+        };
+        let who = if x.is_me {
+            format!("**{you}**")
+        } else {
+            x.speaker.clone()
+        };
+        s.push_str(&format!(
+            "| {who} | {} | {:.0}% | {} | {} | {:.0} | {} | {} | {fillers} |\n",
+            mmss(x.talk_ms),
+            x.share * 100.0,
+            x.turns,
+            mmss(x.longest_turn_ms),
+            x.words_per_min,
+            x.interruptions_made,
+            x.interruptions_received,
+        ));
+    }
+    s.push('\n');
+    s.push_str(&note);
+    s
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -368,6 +434,21 @@ mod tests {
             "{r}"
         );
         assert!(r.contains("\"ờ\" ×1"), "{r}");
+        let en = render_section(&st, "en");
+        assert!(en.starts_with("## Statistics\n"), "{en}");
+        assert!(
+            en.contains("| **You** | 00:13 | 45% | 2 | 00:14 | "),
+            "{en}"
+        );
+        assert!(
+            en.contains("| S1 | 00:08 | 26% | 1 | 00:08 | 68 | 1 | 0 | 2 (kiểu như ×1, ờ ×1) |"),
+            "{en}"
+        );
+        let vi = render_section(&st, "vi");
+        assert!(
+            vi.starts_with("## Thống kê\n") && vi.contains("| **Bạn** |"),
+            "{vi}"
+        );
     }
 
     #[test]

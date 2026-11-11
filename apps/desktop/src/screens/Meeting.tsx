@@ -19,10 +19,11 @@ import { CitationContext, type CitationCtx } from "../components/citationContext
 import { ActionsPanel, AudioBar, EnhancedNotesView, JobsList } from "../components/meeting/parts";
 import { ActionItemsView, SummaryView } from "../components/meeting/SummaryView";
 import { NotesEditor } from "../components/NotesEditor";
+import { RecipesPanel } from "../components/recipes/RecipesPanel";
 import { TranscriptPanel, type TranscriptLine } from "../components/TranscriptPanel";
 import { Button, cx, ErrorNote, Icon, Loading, Spinner } from "../components/ui";
 
-type Tab = "notes" | "summary" | "actions" | "transcript";
+type Tab = "notes" | "summary" | "recipes" | "actions" | "transcript";
 
 function VuMeter({ levels }: { levels: [string, number][] }) {
   return (
@@ -241,6 +242,7 @@ function MeetingView({ detail }: { detail: MeetingDetail }) {
   const tabs: { id: Tab; label: string; mobileOnly?: boolean }[] = [
     { id: "notes", label: t("meeting.tabs.notes") },
     { id: "summary", label: t("meeting.tabs.summary") },
+    { id: "recipes", label: t("recipes.tab") },
     { id: "actions", label: t("meeting.tabs.actions") },
     { id: "transcript", label: t("meeting.tabs.transcript"), mobileOnly: true },
   ];
@@ -363,6 +365,7 @@ function MeetingView({ detail }: { detail: MeetingDetail }) {
                   <ActionItemsView artifacts={artifacts} />
                 </>
               )}
+              {leftTab === "recipes" && <RecipesPanel meetingId={id} artifacts={artifacts} jobs={[...jobs.values()]} hasTranscript={!!transcriptArt} />}
               {leftTab === "actions" && (
                 <>
                   <ActionsPanel meetingId={id} artifacts={artifacts} />

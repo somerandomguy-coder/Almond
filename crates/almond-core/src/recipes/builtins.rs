@@ -68,8 +68,8 @@ Only raise points grounded in the transcript. Skip a section if there is nothing
         prompt: "Give me (the speaker \"me\") honest, specific feedback on how I communicated in this meeting.
 Take every number (talk time and share, turns, longest turn, pace, interruptions, filler words) from the meeting statistics; never estimate them yourself.
 
-## By the numbers
-A short table comparing me with the other speakers: talk time, share, turns, interruptions made and received, filler words. One sentence on what the numbers say.
+## What the numbers say
+2-3 sentences on what the statistics say about me compared with the others (talk-time share, turns, interruptions made and received, filler words), quoting the numbers exactly. Do not draw a table: the app shows the statistics table above your answer.
 
 ## Clarity
 Were my points clear, structured and to the point? Cite 1-2 examples.
@@ -105,7 +105,7 @@ If no decisions were made, say so in one sentence and list only the open questio
 
 Start with a line \"**Subject:** ...\" (short and specific). Then the email body: a one-line thank-you, a brief recap (3-5 bullets), the decisions, the action items with owners and dates when stated, and the next steps.
 Friendly, professional and concise (under 200 words). Use people's names when the transcript states them, otherwise a neutral greeting. Sign off as \"me\" would, without inventing a name.
-Keep citations out of the email body. After the email, add a line \"Sources:\" followed by the citations for the facts used.",
+Exception to the citation rule: the email itself must contain no [index] citations, because it will be sent as is. After the email, add one line \"Sources:\" followed by the citations for the facts used.",
     },
 ];
 

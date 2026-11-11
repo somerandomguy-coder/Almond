@@ -295,8 +295,15 @@ async fn run_produces_cited_output_and_rerun_supersedes() {
     assert_eq!(o.recipe_id, "builtin:communication");
     assert_eq!(o.recipe_name, "How did I communicate?");
     // Fence stripped; [1] [2, 3] [99] [3] -> [1] [2][3] (dropped) [3]; numbering by first use.
+    // "How did I communicate?" starts with the statistics table rendered by the code.
+    let (table, answer) = o.markdown.split_once("\n\n## Budget").unwrap();
+    assert!(table.starts_with("## Statistics\n"), "{table}");
+    assert!(
+        table.contains("| **You** | 00:09 | 50% | 2 | 00:04 |"),
+        "{table}"
+    );
     assert_eq!(
-        o.markdown,
+        format!("## Budget{answer}"),
         "## Budget\n- Marketing budget is 200 triệu [1].\n- Hire two backend engineers [2][3], \
          plus a made-up line.\n- Lan sends the plan [3]."
     );

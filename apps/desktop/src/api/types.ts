@@ -27,6 +27,7 @@ import type { NotesSnapshot } from "../gen/NotesSnapshot";
 import type { PairBeginResult } from "../gen/PairBeginResult";
 import type { PeerInfo } from "../gen/PeerInfo";
 import type { ProcessorDescriptor } from "../gen/ProcessorDescriptor";
+import type { Recipe } from "../gen/Recipe";
 import type { RecordingStatus } from "../gen/RecordingStatus";
 import type { RerunParams } from "../gen/RerunParams";
 import type { SearchHit } from "../gen/SearchHit";
@@ -94,6 +95,31 @@ export interface ApiMethods {
   "storage.usage": [Record<string, never>, StorageUsage];
   "settings.get": [{ key: string }, JsonValue];
   "settings.set": [{ key: string; value: JsonValue }, null];
+  // ---- recipes (cookbook; Rust: almond_core::recipes) ----
+  "recipes.list": [Record<string, never>, RecipeInfo[]];
+  /** Create (no `id`) or update. Editing a built-in's text saves a user copy (new id); `auto_run` / `hidden` on a built-in are preferences. */
+  "recipes.save": [RecipeSaveParams, RecipeInfo];
+  /** User recipes only; built-ins can only be hidden (`recipes.save { id, hidden: true }`). */
+  "recipes.delete": [{ id: string }, null];
+  /** Runs on the meeting's latest transcript; the answer arrives as a `recipe_output` artifact. */
+  "recipes.run": [{ recipe_id: string; meeting_id: Id; extra?: string | null; lang?: string | null }, Job];
+  /** Live `recipe_output` artifacts of a meeting, latest first, one per recipe. */
+  "recipes.outputs": [{ meeting_id: Id }, Artifact[]];
+}
+
+/** A recipe as `recipes.list` returns it (Rust: `almond_core::recipes::StoredRecipe`). */
+export type RecipeInfo = Recipe & { hidden: boolean };
+
+/** `recipes.save` params: only the fields to change (name + prompt are required for a new recipe). */
+export interface RecipeSaveParams {
+  id?: string | null;
+  name?: string;
+  description?: string;
+  /** Emoji; "" clears it. */
+  icon?: string;
+  prompt?: string;
+  auto_run?: boolean;
+  hidden?: boolean;
 }
 
 /** `llm.status` (Rust: `almond_core::processing::api::llm_status`). */
@@ -191,6 +217,7 @@ export const Kinds = {
   verdicts: "verdicts",
   actionProposals: "action_proposals",
   actionResult: "action_result",
+  recipeOutput: "recipe_output",
 } as const;
 
 /** Processor names the UI triggers explicitly. */
