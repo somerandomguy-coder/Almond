@@ -12,8 +12,10 @@ pnpm -C apps/desktop install
 scripts/dev-linux.sh            # tauri dev with --features whisper,sherpa (CPU engines)
 ```
 
-Release binary: `pnpm -C apps/desktop build && cargo build --release -p almond-desktop --features whisper,sherpa`
-→ `target/release/almond-desktop`.
+Release binary (UI embedded): `pnpm -C apps/desktop tauri build --no-bundle --features whisper,sherpa`
+→ `target/release/almond-desktop`. **Not** plain `cargo build`: without Tauri's `custom-protocol`
+feature (which `tauri build` turns on) the binary is a dev build that loads the UI from the Vite
+dev server at `http://localhost:1420` ("Could not connect to localhost: Connection refused").
 
 Local Ollama on the laptop: `gemma4:e4b` (fallback summaries). Speech models download under
 Settings → Models (`~/.almond/models`), or `cargo run --release -p almond-stt --example models --
