@@ -1,0 +1,32 @@
+[project]
+name = "verify-bench"
+version = "0.1.0"
+description = "Benchmark of factual-error detectors for Almond meeting summaries (VI + EN)"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "torch>=2.7",
+    "transformers>=4.46,<5",
+    "sentence-transformers>=3.0",
+    "sentencepiece>=0.2",
+    "protobuf>=5",
+    "numpy>=1.26",
+    "requests>=2.32",
+    "pyyaml>=6.0",
+    "av>=13",
+    # SymAI's runtime deps (SymAI itself is imported from its checkout via SYMAI_SRC, never vendored)
+    "clingo>=5.7",
+    "pydantic>=2.7",
+    "pydantic-settings>=2.3",
+    "truststore>=0.10",
+]
+
+[tool.uv]
+package = false
+
+[[tool.uv.index]]
+name = "pytorch-cu128"
+url = "https://download.pytorch.org/whl/cu128"
+explicit = true
+
+[tool.uv.sources]
+torch = { index = "pytorch-cu128" }
