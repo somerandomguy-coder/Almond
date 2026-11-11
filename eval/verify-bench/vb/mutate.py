@@ -32,7 +32,7 @@ VI_CHARS = set("ăâđêôơưàáạảãằắặẳẵầấậẩẫèéẹ�
 def lang_of(text: str) -> str:
     low = text.lower()
     n = sum(ch in VI_CHARS for ch in low)
-    return "vi" if n >= 2 else "en"
+    return "vi" if n >= 1 else "en"
 
 
 def fold(s: str) -> str:
@@ -78,6 +78,8 @@ _UNIT_SWAP = {"en": [(r"\bmillion\b", "billion"), (r"\bbillion\b", "million"), (
 
 
 def _bump(value: str) -> str:
+    if re.fullmatch(r"\d{1,3}(?:,\d{3})+", value):
+        return f"{int(value.replace(',', '')) * 2:,}"
     v = float(value.replace(",", "."))
     if v >= 1900 and v <= 2100 and v == int(v):  # a year: shift it
         return str(int(v) + 1)
@@ -90,13 +92,17 @@ def _bump(value: str) -> str:
 
 def mut_number(b, ctx, rng):
     t, lang = b["text"], b["lang"]
-    m = list(re.finditer(r"(?<![\d.,:/])(\d+(?:[.,]\d+)?)(?![\d:/])", t))
+    months = "|".join(_WEEKDAYS[7:]) + "|tháng|thg"
+    m = [x for x in re.finditer(r"(?<![\d.,:/])(\d{1,3}(?:,\d{3})+|\d+(?:[.,]\d+)?)(?![\d:/])", t)
+         if not re.search(rf"(?:{months})\s*$", t[: x.start(1)], re.IGNORECASE)
+         and not re.match(rf"\s*(?:{months})\b", t[x.end(1):], re.IGNORECASE)]
     if m:
         x = rng.choice(m)
         return t[: x.start(1)] + _bump(x.group(1)) + t[x.end(1):]
     for pat, repl in _UNIT_SWAP[lang]:
-        if re.search(pat, t, flags=re.IGNORECASE):
-            return _sub1(pat, repl, t)
+        deixis = r"(?!\s+(?:sau|này|trước|tới|tuần|next|last|this|ago|later))"
+        if re.search(pat + deixis, t, flags=re.IGNORECASE):
+            return _sub1(pat + deixis, repl, t)
     words = _VI_NUMW if lang == "vi" else _EN_NUMW
     for w, r in words.items():
         if re.search(W + re.escape(w) + E, t, flags=re.IGNORECASE):
@@ -122,6 +128,8 @@ def entities(text: str, first_ok: bool = False) -> list[str]:
     for m in _CAP.finditer(text):
         e = m.group(1).strip(" .-")
         if not first_ok and m.start() == 0:
+            continue
+        if re.search(r"thứ\s*$", text[: m.start()], re.IGNORECASE):
             continue
         low = e.lower()
         if low in _NOT_ENT or low.split()[0] in _NOT_ENT or low in _WEEKDAYS or low.startswith("thứ") \
@@ -194,7 +202,7 @@ _VI_HEDGE_DROP = [(W + r"(?:có lẽ|có thể là|có khả năng|hình như|d�
                    r"đâu đó|tầm|khoảng|chừng|gần|hơn)\s+", ""),
                   (W + r"có thể\s+", "sẽ "), (W + r"(?:nghĩ là|nghĩ rằng|cho rằng|cho là|thấy là|thấy rằng)\s+", "khẳng định "),
                   (W + r"(?:đề xuất|đề nghị|gợi ý)\s+", "quyết định "), (W + r"dự kiến\s+", "đã "),
-                  (W + r"(?:định|tính|muốn)\s+", "đã ")]
+                  (W + r"(?:tính|muốn)\s+", "đã ")]
 _EN_HEDGE_ADD = [(r"^(.)", r"Possibly, \1")]
 _VI_HEDGE_ADD = [(r"^(.)", r"Có lẽ \1")]
 
@@ -212,9 +220,12 @@ def mut_hedge_add(b, ctx, rng):
         return None  # already hedged: adding one is not a clean certainty change
     if not re.match(r"^[A-ZĐÀ-Ỹa-zà-ỹ]", t):
         return None
-    if b["lang"] == "vi":
-        return "Có lẽ " + t[0].lower() + t[1:] if not re.match(r"^S\d|^[A-ZĐ][a-zà-ỹ]+\s+[A-ZĐ]", t) else "Có lẽ " + t
-    return "Possibly, " + (t[0].lower() + t[1:] if not re.match(r"^(S\d|[A-Z][a-z]+ [A-Z]|[A-Z]{2,})", t) else t)
+    first = re.match(r"[\wÀ-ỹ]+", t).group(0)
+    keep = (first in ctx["entities"] or first in ctx["speakers"] or first.lower() in _WEEKDAYS
+            or re.fullmatch(r"S\d+", first) or (len(first) > 1 and first[1:] != first[1:].lower())
+            or first.lower() not in ctx.get("lower_vocab", set()))
+    head = t if keep else t[0].lower() + t[1:]
+    return ("Có lẽ " if b["lang"] == "vi" else "Possibly, ") + head
 
 
 # --------------------------------------------------------------------------- quantifiers
@@ -315,7 +326,7 @@ _EN_GEN = [(r"\blast (monday|tuesday|wednesday|thursday|friday|saturday|sunday|w
            (r"^(S\d+|[A-Z][a-z]+(?: [A-Z][a-z]+)?) (said|noted|thinks|believes|suggested|mentioned|explained|"
             r"stated|feels|agreed|proposed|asked|raised|reported)\b", r"Everyone \2"),
            (r"^(The officer|The Chair|The chair|Cr [A-Z][a-z]+|Councillor [A-Z][a-z]+) (\w+)", r"All members \2")]
-_VI_GEN = [(W + r"hôm qua" + E, "hằng ngày"), (W + r"hôm nay" + E, "ngày nào cũng"), (W + r"lần này" + E, "lần nào cũng"),
+_VI_GEN = [(W + r"(?:trong )?hôm qua" + E, "hằng ngày"), (W + r"(?:trong )?hôm nay" + E, "mỗi ngày"), (W + r"lần này" + E, "lần nào cũng"),
            (W + r"một lần" + E, "nhiều lần"), (W + r"tuần này" + E, "tuần nào cũng"), (W + r"đôi khi" + E, "luôn luôn"),
            (W + r"thỉnh thoảng" + E, "luôn luôn"), (W + r"trong trường hợp này" + E, "trong mọi trường hợp"),
            (r"^(S\d+|[A-ZĐ][a-zà-ỹ]+(?: [A-ZĐ][a-zà-ỹ]+)?) (cho rằng|nói|cho biết|nghĩ|thấy|đề xuất|đề nghị|chia sẻ|"
