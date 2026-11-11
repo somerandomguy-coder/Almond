@@ -483,10 +483,16 @@ async fn meeting_scope_uses_notes_summary_recipe_output_and_transcript() {
 
     let srcs = r["entry"]["sources"].as_array().unwrap().clone();
     let kinds: Vec<&str> = srcs.iter().map(|s| s["kind"].as_str().unwrap()).collect();
+    // Transcript excerpts are numbered first, then summary, notes, recipe outputs.
     assert_eq!(
         kinds,
-        vec!["notes", "recipe_output", "transcript"],
+        vec!["transcript", "notes", "recipe_output"],
         "{srcs:?}"
+    );
+    assert_eq!(srcs[0]["n"], 1);
+    assert!(
+        sys.contains("\n[1] (transcript) Transcript excerpt:"),
+        "{sys}"
     );
     let tr = srcs.iter().find(|s| s["kind"] == "transcript").unwrap();
     assert_eq!(tr["span"]["artifact"], t.id.as_str());

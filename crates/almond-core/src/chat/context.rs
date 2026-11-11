@@ -1028,7 +1028,10 @@ fn build_meeting(core: &Core, meeting_id: &Id, question: &str, b: &mut Builder) 
     b.background(about);
 
     if let Some(s) = decode::<Summary>(&info.arts.summary) {
-        let text = format!("AI summary of the meeting:\n{}", summary_text(&s));
+        let text = format!(
+            "AI summary of the meeting (generated; may contain mistakes):\n{}",
+            summary_text(&s)
+        );
         b.push(
             source(
                 ChatSourceKind::Summary,
@@ -1101,6 +1104,14 @@ fn build_meeting(core: &Core, meeting_id: &Id, question: &str, b: &mut Builder) 
             transcript_chunks(&m, &a.id, t, &info.names, &kws, b);
         }
         _ => b.background("This meeting has no transcript yet.".into()),
+    }
+    // What was said comes first (the model leans on the first sources); the summary and notes
+    // were budgeted before the transcript so they are always there.
+    b.ctx
+        .sources
+        .sort_by_key(|s| s.src.kind != ChatSourceKind::Transcript);
+    for (i, s) in b.ctx.sources.iter_mut().enumerate() {
+        s.src.n = i as u32 + 1;
     }
     Ok(())
 }

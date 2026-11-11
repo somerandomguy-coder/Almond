@@ -169,11 +169,8 @@ pub(crate) fn answer_lang(question: &str, ui_lang: Option<&str>) -> &'static str
         .iter()
         .filter(|w| VI_HINTS.contains(&w.as_str()))
         .count();
-    if en > vi {
-        "en"
-    } else if vi > en {
-        "vi"
-    } else if ui_lang.is_some_and(|l| l.starts_with("vi")) {
+    let ui_vi = ui_lang.is_some_and(|l| l.starts_with("vi"));
+    if vi > en || (vi == en && ui_vi) {
         "vi"
     } else {
         "en"
