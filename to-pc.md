@@ -18,6 +18,11 @@ over Tailscale (PC = `100.80.179.59`, laptop = `100.101.48.54`).
 **Files touched outside the usual ownership** — please don't edit these until `ws/linux-offload`
 is merged, or tell me first: `crates/almond-core/src/settings.rs` (2 keys),
 `crates/almond-pipeline/src/runner.rs` (defer hook), `crates/almond-core/src/processing/{mod,caps,jobloop,offload}.rs`.
+Also two small fixes in your areas (commit on `ws/linux-offload`, please review):
+`capture/engines.rs` reports "engine not compiled in" before "model not installed" (test
+`transcribe_without_engines_is_unsupported` failed on a machine without models), and
+`tests/library_sync.rs` now waits for pairAccept's background first sync (raced on Linux:
+B's own `sync.now` got 0 events). Full suite on Fedora: 340 pass, clippy clean.
 
 **Asks for the PC side:**
 - [ ] Windows Firewall: allow inbound **UDP 47321** (iroh sync) from the Tailscale range
