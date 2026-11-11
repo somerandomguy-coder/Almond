@@ -1,0 +1,47 @@
+# Minimal Vietnamese extension of SymAI's lexicon_common.yaml (merged at run time by
+# vb/systems/symai_sys.py; SymAI's repository is not modified). Same keys and semantics as the
+# English lists. Matching is case-insensitive on word boundaries.
+
+hedges: [có lẽ, có thể, có khả năng, khả năng, hình như, dường như, chắc là, chắc, nghe nói, không chắc, chưa chắc,
+         tầm, khoảng, chừng, đâu đó, gần như, ước tính, dự kiến, chắc tầm, hay là, nhỉ, phải không]
+opinion_markers: [tôi nghĩ, mình nghĩ, em nghĩ, anh nghĩ, tôi thấy, mình thấy, em thấy, theo tôi, theo mình, theo em,
+                  cá nhân tôi, cá nhân mình, tôi cho là, mình cho là, tôi đoán, mình đoán]
+epistemic_attributions: [cho rằng, cho là, nghĩ rằng, nghĩ là, tin rằng, cảm thấy, lo ngại, lo lắng rằng, theo, nhận định,
+                         ý kiến, đánh giá là, nghi ngờ]
+reporting_verbs: [nói, cho biết, chia sẻ, kể, nhắc, đề cập, giải thích, báo cáo, thông báo, nêu, nhấn mạnh, xác nhận,
+                  đề xuất, đề nghị, hỏi, trả lời, phản đối, đồng ý, gợi ý, trình bày, nhận xét]
+quantifiers:
+  none: [không ai, không có gì, chưa bao giờ, không bao giờ, không hề]
+  rare: [hiếm khi, ít khi, thỉnh thoảng mới]
+  some: [một số, một vài, vài, đôi khi, thỉnh thoảng, đôi lúc, một phần, ít]
+  most: [hầu hết, đa số, phần lớn, thường, thường xuyên, nhiều]
+  all: [tất cả, mọi, mọi người, toàn bộ, luôn, luôn luôn, lúc nào cũng, ai cũng, hằng ngày, hàng ngày, cả hai]
+negations: [không, chưa, chẳng, chả, đừng, chưa từng, không hề, không phải, không còn, từ chối]
+negation_exclusions: [không gian, không khí, hay không, có không, được không, phải không, không chỉ, chưa chắc, không chắc,
+                      không sao, không biết]
+temporal:
+  past: [đã, rồi, từng, trước đây, hồi trước, đã từng, không còn, hôm qua, tuần trước, tháng trước, năm ngoái]
+  current: [đang, hiện tại, hiện nay, bây giờ, vẫn, vẫn còn, hôm nay, tuần này, tháng này, năm nay]
+  future: [sẽ, sắp, dự kiến, kế hoạch, tuần sau, tuần tới, tháng sau, tháng tới, năm sau, ngày mai, sắp tới]
+generic_markers: [luôn luôn, lúc nào cũng, hằng ngày, hàng ngày, thường xuyên, mọi lần, lần nào cũng, ngày nào cũng,
+                  tuần nào cũng, mọi trường hợp]
+episodic_markers: [hôm qua, hôm nay, sáng nay, tối qua, tuần trước, lần này, một lần, hôm đó, trong trường hợp này]
+number_words: {một: 1, hai: 2, ba: 3, bốn: 4, tư: 4, năm: 5, sáu: 6, bảy: 7, tám: 8, chín: 9, mười: 10, hai mươi: 20,
+               ba mươi: 30, một trăm: 100, chục: 10}
+units:
+  triệu: [money, 1000000]
+  tr: [money, 1000000]
+  tỷ: [money, 1000000000]
+  nghìn: [money, 1000]
+  ngàn: [money, 1000]
+  đồng: [money, 1]
+  phút: [duration, 0.000694444]
+  tiếng: [duration, 0.0416667]
+  giờ: [duration, 0.0416667]
+  ngày: [duration, 1]
+  tuần: [duration, 7]
+  tháng: [duration, 30]
+  năm: [duration, 365]
+  phần trăm: [percent, 1]
+  người: [count:people, 1]
+  lần: [count:times, 1]
