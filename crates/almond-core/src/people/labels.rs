@@ -376,17 +376,18 @@ async fn suggest(
         .collect();
     let people = catalog::all(core)?;
     let mut voices_used = None;
-    if !remote.is_empty() && people.iter().any(|p| !p.voiceprints.is_empty()) {
-        if let Some(v) = voices(core, m, transcript).await? {
-            out.extend(match_voices(
-                &v,
-                &people,
-                &remote,
-                threshold(core),
-                DEFAULT_VOICE_MARGIN,
-            ));
-            voices_used = Some(v);
-        }
+    if !remote.is_empty()
+        && people.iter().any(|p| !p.voiceprints.is_empty())
+        && let Some(v) = voices(core, m, transcript).await?
+    {
+        out.extend(match_voices(
+            &v,
+            &people,
+            &remote,
+            threshold(core),
+            DEFAULT_VOICE_MARGIN,
+        ));
+        voices_used = Some(v);
     }
 
     // Calendar: one attendee left and one speaker left.

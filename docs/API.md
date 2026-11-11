@@ -73,6 +73,31 @@ The UI never touches storage directly — it only calls these methods.
 | `app.info` | `{}` | `{ name, version, api_version, platform: "windows" \| "linux" \| "android" }` (Tauri command `app_info`) |
 | `settings.get` / `settings.set` | `{ key }` / `{ key, value }` | JSON |
 
+### People (feature `people`, `crates/almond-core/src/people/`)
+
+People are synced records (`Person`, collection `"person"`); who each transcript speaker is
+lives in `speaker_labels` artifacts (`SpeakerLabels`, latest non-superseded per meeting wins).
+Responses carry voice prints **without vectors** (`vector: []`).
+
+| Method | Params | Result |
+|---|---|---|
+| `people.list` | `{}` | `{ person: Person, meeting_count, talk_time_s, last_met: number \| null }[]` (me first, then most recently met) |
+| `people.get` | `{ id }` | `{ person, meetings: { meeting_id, title, started_at, speakers: string[], talk_time_s, source: LabelSource \| null, attendee: boolean }[], talk_time_s, last_met }` — meetings by speaker label and by calendar attendee email, newest first |
+| `people.save` | `{ id?, name, emails?, aliases?, notes?, is_self?, voiceprints? }` — no `id` creates; omitted fields are kept; `voiceprints` = the prints to keep (matched by `meeting_id` + `speaker` + `created_at`), so leaving one out deletes it; `is_self: true` clears it on everyone else | `Person` |
+| `people.delete` | `{ id }` | `null` (also removes the person from every meeting's labels) |
+| `people.merge` | `{ keep, remove }` | `Person` (`keep` gets `remove`'s name as an alias, emails, notes, voice prints and speaker labels; `remove` is deleted) |
+| `people.labelSpeaker` | `{ meeting_id, speaker, person_id? \| name? \| me?: true }` — exactly one; `name` reuses a person with that name/alias or creates one; `me` = the `is_self` person (created if missing) | `SpeakerLabels` (`source: user`; adds the speaker's voice print in this meeting to the person when the audio is on this device and the build has the `sherpa` engine) |
+| `people.unlabelSpeaker` | `{ meeting_id, speaker }` | `SpeakerLabels` (a user label's voice print is removed from the person) |
+| `people.suggestions` | `{ meeting_id }` | `SpeakerLabel[]` — what the core would suggest now for speakers without a user label (voice, one unambiguous calendar attendee, `me`); nothing is written |
+
+**Automatic labels:** when this device adds a transcript, the core writes a `speaker_labels`
+artifact once: `me` (mic channel) → the `is_self` person; remote speakers → the person whose
+voice prints match best (`source: voice`, `confidence` = cosine similarity, at least setting
+`people.voice_threshold`, default 0.5, and 0.05 ahead of the runner-up; one speaker per person);
+if exactly one non-self calendar attendee and one remote speaker are left, that attendee by
+email (`source: calendar`; the person is created from the invite when unknown). User labels are
+never overwritten. Calibration: docs/people-voice.md.
+
 **Settings keys** (local to the device, never synced): `ui.language` (`"vi" | "en"`), `ui.theme`
 (`"system" | "light" | "dark"`), `calendar.reminder_lead_min` (number), `sync.auto_while_open`
 (bool; the core syncs every 2 min with paired peers while the app is open), `google.oauth_client`
