@@ -397,9 +397,8 @@ fn start_stream(
         .or_else(|_| device.default_output_config())
         .map_err(cpal_err)?;
     let failed = Arc::new(AtomicBool::new(false));
-    let config = supported.config();
     let fmt = supported.sample_format();
-    let stream = {
+    let build_with = |config: cpal::StreamConfig| {
         use cpal::SampleFormat as F;
         let (d, c, t, f) = (&device, config, tx.clone(), failed.clone());
         match fmt {
@@ -413,7 +412,28 @@ fn start_stream(
             F::U16 => build::<u16>(d, c, t, f),
             F::U32 => build::<u32>(d, c, t, f),
             other => Err(Error::Unsupported(format!("sample format {other:?}"))),
-        }?
+        }
+    };
+    let mut config = supported.config();
+    let stream = match small_buffer(&supported) {
+        Some(frames) => {
+            let mut small = config;
+            small.buffer_size = cpal::BufferSize::Fixed(frames);
+            match build_with(small) {
+                Ok(s) => {
+                    config = small;
+                    s
+                }
+                Err(e) => {
+                    tracing::debug!(
+                        ?channel,
+                        "{frames}-frame buffer refused ({e}); using the default"
+                    );
+                    build_with(config)?
+                }
+            }
+        }
+        None => build_with(config)?,
     };
     stream.play().map_err(cpal_err)?;
     tracing::debug!(
@@ -431,6 +451,29 @@ fn start_stream(
         name,
     })
 }
+
+/// Capture buffer of [`CAPTURE_BUFFER_MS`] where the device allows it (not on Windows, whose
+/// default WASAPI buffer is already ~10 ms).
+///
+/// cpal's PulseAudio host with `BufferSize::Default` leaves the server's default capture buffer:
+/// on the Fedora laptop (pipewire-pulse) 171-ms chunks with a reported latency of ~2 s on every
+/// callback. The aligner trusts that latency (`AlignConfig::live`, 300 ms max), so it zero-filled
+/// and then dropped nearly all real audio: recordings were silent after the first seconds. With
+/// a 20-ms buffer: 20-ms chunks, ~35 ms reported latency.
+fn small_buffer(supported: &cpal::SupportedStreamConfig) -> Option<u32> {
+    if cfg!(windows) {
+        return None;
+    }
+    let frames = supported.sample_rate() * CAPTURE_BUFFER_MS / 1000;
+    match supported.buffer_size() {
+        cpal::SupportedBufferSize::Range { min, max } => {
+            Some(frames.clamp(*min, *max)).filter(|f| *f > 0)
+        }
+        cpal::SupportedBufferSize::Unknown => Some(frames),
+    }
+}
+
+const CAPTURE_BUFFER_MS: u32 = 20;
 
 fn build<T>(
     device: &cpal::Device,

@@ -138,13 +138,21 @@ export function ActionsPanel({ meetingId, artifacts }: { meetingId: string; arti
   );
 }
 
-export function JobsList({ jobs }: { jobs: JobProgress[] }) {
+export function JobsList({ jobs, onCancel }: { jobs: JobProgress[]; onCancel?: (ids: string[]) => void }) {
   const { t } = useTranslation();
   const active = jobs.filter((j) => j.status === "pending" || j.status === "claimed" || j.status === "failed");
   if (!active.length) return null;
+  const stoppable = active.filter((j) => j.status === "pending" || j.status === "claimed").map((j) => j.job.id);
   return (
     <div className="rounded-2xl border border-line bg-surface p-3" aria-label={t("meeting.pipeline")}>
-      <p className="mb-2 text-xs font-semibold tracking-wider text-muted uppercase">{t("meeting.pipeline")}</p>
+      <div className="mb-2 flex items-center gap-2">
+        <p className="text-xs font-semibold tracking-wider text-muted uppercase">{t("meeting.pipeline")}</p>
+        {onCancel && stoppable.length > 1 && (
+          <Button size="sm" variant="ghost" className="ml-auto" onClick={() => onCancel(stoppable)}>
+            {t("meeting.stopAll")}
+          </Button>
+        )}
+      </div>
       <ul className="flex flex-col gap-2">
         {active.map((j) => (
           <li key={j.job.id} className="text-sm">
@@ -152,6 +160,11 @@ export function JobsList({ jobs }: { jobs: JobProgress[] }) {
               <code className="text-xs">{j.job.processor}</code>
               <span className="min-w-0 text-xs break-words text-faint">{j.message}</span>
               <span className={cx("ml-auto text-xs", j.status === "failed" ? "text-bad" : "text-muted")}>{t(`meeting.jobs.${j.status}`)}</span>
+              {onCancel && (j.status === "pending" || j.status === "claimed") && (
+                <Button size="sm" variant="ghost" onClick={() => onCancel([j.job.id])} aria-label={t("meeting.stopJob", { name: j.job.processor })}>
+                  {t("meeting.stop")}
+                </Button>
+              )}
             </div>
             <Progress value={j.progress} label={j.job.processor} />
           </li>

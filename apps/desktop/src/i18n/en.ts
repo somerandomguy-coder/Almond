@@ -116,6 +116,8 @@ const en = {
       failed: "Failed",
       cancelled: "Cancelled",
     },
+    stopAll: "Stop all",
+    stopJob: "Stop {{name}}",
     actionsTitle: "Suggested actions",
     actionsNone: "No suggested actions yet.",
     execute: "Execute",

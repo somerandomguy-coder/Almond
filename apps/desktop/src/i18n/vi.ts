@@ -118,6 +118,8 @@ const vi: Resources = {
       failed: "Lỗi",
       cancelled: "Đã huỷ",
     },
+    stopAll: "Dừng tất cả",
+    stopJob: "Dừng {{name}}",
     actionsTitle: "Hành động gợi ý",
     actionsNone: "Chưa có hành động gợi ý.",
     execute: "Thực hiện",

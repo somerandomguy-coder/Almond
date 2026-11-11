@@ -217,6 +217,21 @@ function MeetingView({ detail }: { detail: MeetingDetail }) {
   };
 
   const enhanced = latest(artifacts, Kinds.enhancedNotes);
+  // Stop jobs (queued ones at once; a running one at its next checkpoint). Cancelled jobs are
+  // not requested again; "Run again" on an artifact still works.
+  const cancelJobs = (ids: string[]) => {
+    for (const jid of ids) {
+      void api
+        .call("jobs.cancel", { id: jid })
+        .then(() =>
+          setJobs((m) => {
+            const cur = m.get(jid);
+            return cur ? new Map(m).set(jid, { ...cur, status: "cancelled", message: "cancelled" }) : m;
+          }),
+        )
+        .catch(() => {});
+    }
+  };
   const pipelineBusy = [...jobs.values()].some((j) => j.status === "pending" || j.status === "claimed") || recording.state === "finalizing";
   const enhanceRunning = enhanceJob != null && (jobs.get(enhanceJob)?.status ?? "pending") !== "done";
   const hasSummary = artifacts.some((a) => a.kind === Kinds.summary);
@@ -315,7 +330,7 @@ function MeetingView({ detail }: { detail: MeetingDetail }) {
         <div className="grid min-h-0 flex-1 lg:grid-cols-[minmax(0,1fr)_24rem] xl:grid-cols-[minmax(0,1fr)_28rem]">
           <div className={cx("min-h-0 overflow-y-auto px-4 py-6 sm:px-8", tab === "transcript" ? "hidden lg:block" : "block")}>
             <div className="mx-auto flex max-w-2xl flex-col gap-6">
-              <JobsList jobs={[...jobs.values()]} />
+              <JobsList jobs={[...jobs.values()]} onCancel={cancelJobs} />
               {leftTab === "notes" && (
                 <>
                   {enhanced && (
