@@ -696,6 +696,17 @@ export class MockApi implements AlmondApi {
       if (!device || !/^[^\s:]+:\d+$/.test(addr)) throw new ApiError(-32602, "need a device id and an ip:port address");
       return null;
     },
+    "llm.status": function () {
+      const remote = this.settings.get("llm.remote_ollama_url");
+      const configured = typeof remote === "string" && remote.trim() ? remote.trim() : null;
+      return {
+        url: configured ?? "http://127.0.0.1:11434",
+        remote: configured !== null,
+        remote_configured: configured,
+        models: configured ? ["gemma4:12b", "qwen3.5:4b"] : ["qwen3.5:4b"],
+        error: null,
+      };
+    },
     "storage.usage": function () {
       return { db_bytes: 3_400_000, blobs_bytes: 182_000_000, models_bytes: 2_900_000_000, audio_bytes: 176_000_000 };
     },

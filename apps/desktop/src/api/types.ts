@@ -90,9 +90,21 @@ export interface ApiMethods {
   "models.download": [{ id: string }, Job];
   "models.select": [ModelSlot, null];
   "models.slots": [Record<string, never>, ModelSlot[]];
+  "llm.status": [{ refresh?: boolean }, LlmStatus];
   "storage.usage": [Record<string, never>, StorageUsage];
   "settings.get": [{ key: string }, JsonValue];
   "settings.set": [{ key: string; value: JsonValue }, null];
+}
+
+/** `llm.status` (Rust: `almond_core::processing::api::llm_status`). */
+export interface LlmStatus {
+  /** The Ollama LLM jobs use now. */
+  url: string | null;
+  /** `url` is the remote one (setting `llm.remote_ollama_url`, e.g. the home PC over Tailscale). */
+  remote: boolean;
+  remote_configured: string | null;
+  models: string[];
+  error: string | null;
 }
 
 /** `meetings.import` params (Rust: `almond_core::capture::import::ImportParams`). */

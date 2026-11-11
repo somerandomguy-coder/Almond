@@ -5,6 +5,7 @@ import type { JobProgress } from "../gen/JobProgress";
 import type { ModelEntry } from "../gen/ModelEntry";
 import type { ModelSlot } from "../gen/ModelSlot";
 import { useApi, useLoad, useNotification } from "../api/context";
+import type { LlmStatus } from "../api/types";
 import { errorMessage } from "../api/errors";
 import { LANGUAGES, setLanguage, type UiLang } from "../i18n";
 import { formatBytes } from "../lib/text";
@@ -286,6 +287,97 @@ function Reminders() {
   );
 }
 
+/** Settings `llm.remote_ollama_url`, `processing.offload`, `processing.offload_wait_min`. */
+function Offload() {
+  const { t } = useTranslation();
+  const api = useApi();
+  const [url, setUrl] = useState("");
+  const [mode, setMode] = useState("local");
+  const [wait, setWait] = useState(20);
+  const [status, setStatus] = useState<LlmStatus | null>(null);
+  const [checking, setChecking] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  useEffect(() => {
+    void api.call("settings.get", { key: "llm.remote_ollama_url" }).then((v) => setUrl(typeof v === "string" ? v : "")).catch(() => {});
+    void api.call("settings.get", { key: "processing.offload" }).then((v) => setMode(v === "prefer_peer" ? v : "local")).catch(() => {});
+    void api.call("settings.get", { key: "processing.offload_wait_min" }).then((v) => typeof v === "number" && setWait(v)).catch(() => {});
+    void api.call("llm.status", {}).then(setStatus).catch(() => {});
+  }, [api]);
+  const save = (e: FormEvent) => {
+    e.preventDefault();
+    setErr(null);
+    setChecking(true);
+    const v = url.trim();
+    void api
+      .call("settings.set", { key: "llm.remote_ollama_url", value: v || null })
+      .then(() => api.call("llm.status", { refresh: true }))
+      .then(setStatus)
+      .catch((e2) => setErr(errorMessage(e2)))
+      .finally(() => setChecking(false));
+  };
+  const changeMode = (m: string) => {
+    setMode(m);
+    void api.call("settings.set", { key: "processing.offload", value: m });
+  };
+  const changeWait = (m: number) => {
+    setWait(m);
+    void api.call("settings.set", { key: "processing.offload_wait_min", value: m });
+  };
+  return (
+    <section>
+      <SectionTitle>{t("settings.offload")}</SectionTitle>
+      <Card className="flex flex-col !py-1">
+        <p className="pt-3 text-xs text-muted">{t("settings.offloadHint")}</p>
+        <form onSubmit={save} className="flex flex-col gap-2 py-3">
+          <label htmlFor="set-remote-ollama" className="text-sm font-medium">
+            {t("settings.remoteOllama")}
+          </label>
+          <p className="text-xs text-muted">{t("settings.remoteOllamaHint")}</p>
+          <div className="flex flex-wrap items-center gap-2">
+            <input
+              id="set-remote-ollama"
+              value={url}
+              onChange={(e) => setUrl(e.target.value)}
+              placeholder="100.80.179.59"
+              autoComplete="off"
+              spellCheck={false}
+              className="min-w-0 flex-1 rounded-full border border-line bg-surface px-4 py-2 font-mono text-sm outline-none focus:border-accent"
+            />
+            <Button type="submit" disabled={checking}>
+              {checking ? <Spinner /> : t("app.save")}
+            </Button>
+          </div>
+          {status && (
+            <p role="status" className="flex flex-wrap items-center gap-2 text-sm">
+              <Pill className={status.remote ? "bg-ok-soft text-ok" : undefined}>{status.remote ? t("settings.llmRemote") : t("settings.llmLocal")}</Pill>
+              <span className="font-mono text-xs text-muted">{t("settings.llmUsing", { url: status.url ?? "—" })}</span>
+              {status.remote_configured && !status.remote && <span className="text-xs text-bad">{t("settings.llmUnreachable")}</span>}
+            </p>
+          )}
+          {err && <p className="text-sm text-bad">{err}</p>}
+        </form>
+        <Row label={t("settings.offloadMode")} hint={t("settings.offloadModeHint")} htmlFor="set-offload">
+          <select id="set-offload" className={selectCls} value={mode} onChange={(e) => changeMode(e.target.value)}>
+            <option value="local">{t("settings.offloadLocal")}</option>
+            <option value="prefer_peer">{t("settings.offloadPreferPeer")}</option>
+          </select>
+        </Row>
+        {mode === "prefer_peer" && (
+          <Row label={t("settings.offloadWait")} htmlFor="set-offload-wait">
+            <select id="set-offload-wait" className={selectCls} value={wait} onChange={(e) => changeWait(Number(e.target.value))}>
+              {[5, 10, 20, 30, 60, 120].map((m) => (
+                <option key={m} value={m}>
+                  {t("settings.minutes", { count: m })}
+                </option>
+              ))}
+            </select>
+          </Row>
+        )}
+      </Card>
+    </section>
+  );
+}
+
 const TASKS: { task: string; kind: string; langs: (string | null)[] }[] = [
   { task: "stt", kind: "stt", langs: ["vi", "en"] },
   { task: "stt_live", kind: "stt", langs: ["vi"] },
@@ -394,6 +486,7 @@ export function Settings() {
       <Calendars />
       <Reminders />
       <Models />
+      <Offload />
       <Storage />
       <section>
         <SectionTitle>{t("settings.about")}</SectionTitle>

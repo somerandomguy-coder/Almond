@@ -22,6 +22,30 @@ use serde::Deserialize;
 use serde_json::{Value, json};
 use std::sync::Arc;
 
+/// `llm.status { refresh? }`: which Ollama LLM jobs use right now (the remote one from
+/// `llm.remote_ollama_url`, e.g. the home PC over Tailscale, or this device's).
+#[derive(Deserialize, Default)]
+#[serde(default)]
+struct LlmStatusParams {
+    /// Re-probe now (after changing `llm.remote_ollama_url`) instead of the last result.
+    refresh: bool,
+}
+
+async fn llm_status(core: Arc<Core>, p: LlmStatusParams) -> ApiResult<Value> {
+    let info = if p.refresh {
+        core.processing.refresh_capabilities(&core).await
+    } else {
+        core.processing.capabilities()
+    };
+    Ok(json!({
+        "url": info.llm_url,
+        "remote": info.llm_remote,
+        "remote_configured": super::remote_ollama_setting(&core),
+        "models": info.chat_models().map(|m| m.name.clone()).collect::<Vec<_>>(),
+        "error": info.llm_error,
+    }))
+}
+
 pub(crate) fn register(r: &mut Router) {
     r.add(
         "artifacts.list",
@@ -67,6 +91,7 @@ pub(crate) fn register(r: &mut Router) {
     });
     r.add("actions.propose", actions_propose);
     r.add("actions.execute", actions_execute);
+    r.add("llm.status", llm_status);
     r.add("models.list", models_list);
     r.add("models.download", models_download);
     r.add("models.select", |core, slot: ModelSlot| async move {
