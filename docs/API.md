@@ -73,6 +73,29 @@ The UI never touches storage directly — it only calls these methods.
 | `app.info` | `{}` | `{ name, version, api_version, platform: "windows" \| "linux" \| "android" }` (Tauri command `app_info`) |
 | `settings.get` / `settings.set` | `{ key }` / `{ key, value }` | JSON |
 
+### Recipes (cookbook)
+
+Recipes are synced records (collection `recipe`). Built-ins have ids `builtin:teach_back`,
+`builtin:forgot_to_ask`, `builtin:communication`, `builtin:decisions`, `builtin:followup_email`;
+their text ships with the app, and a record with a built-in's id only stores the user's `hidden` /
+`auto_run` for it. `RecipeInfo` = `Recipe` + `hidden: boolean`.
+
+| Method | Params | Result |
+|---|---|---|
+| `recipes.list` | `{}` | `RecipeInfo[]` (built-ins first, in a fixed order, then the user's by name; hidden ones included) |
+| `recipes.save` | `{ id?, name?, description?, icon?, prompt?, auto_run?, hidden? }` — no `id`: create (name + prompt required); with `id`: change only the given fields (`icon: ""` clears it). For a built-in, `auto_run` / `hidden` are stored as preferences, and a change to its name, description, icon or prompt saves a **copy** with a new id instead | `RecipeInfo` (the copy when one was made) |
+| `recipes.delete` | `{ id }` | `null`; built-ins: `-32602` ("hide them instead") |
+| `recipes.run` | `{ recipe_id, meeting_id, extra?, lang? }` (`lang`: output language, default setting `ui.language`, else the meeting's dominant language) | `Job` (`recipe.llm` on the meeting's latest transcript; the recipe is snapshotted into `params.recipe`). `-32602` when the meeting has no transcript yet |
+| `recipes.outputs` | `{ meeting_id }` | `Artifact[]`: live `recipe_output` artifacts, latest first, one per recipe |
+
+`recipe.llm` (processor; `requires: ["llm"]`, so a phone or laptop leaves it for the PC like any
+LLM job) writes a `recipe_output` artifact: `{ recipe_id, recipe_name, markdown, citations }`, where
+`[n]` in `markdown` is `citations[n - 1]` (a transcript `SpanRef`, validated). Its
+`provenance.processor` is `recipe.llm/<recipe_id>`, so a rerun of a recipe supersedes only that
+recipe's previous output. "How did I communicate?" starts with a statistics table computed in code
+(talk time, share, turns, longest turn, words/min, interruptions, filler words). Recipes with
+`auto_run` are requested once for each new transcript, by the device that wrote it.
+
 **Settings keys** (local to the device, never synced): `ui.language` (`"vi" | "en"`), `ui.theme`
 (`"system" | "light" | "dark"`), `calendar.reminder_lead_min` (number), `sync.auto_while_open`
 (bool; the core syncs every 2 min with paired peers while the app is open), `google.oauth_client`

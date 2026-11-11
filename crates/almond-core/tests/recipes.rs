@@ -215,12 +215,11 @@ async fn cookbook_crud_and_builtins() {
     };
     assert_eq!(get("builtin:teach_back")["hidden"], true);
     assert_eq!(get("builtin:teach_back")["auto_run"], true);
-    assert_eq!(
+    assert!(
         get("builtin:decisions")["prompt"]
             .as_str()
             .unwrap()
-            .contains("Markdown table"),
-        true
+            .contains("Markdown table")
     );
     assert_eq!(
         get(copy_id)["prompt"],
