@@ -35,6 +35,7 @@ pub mod recipes;
 pub mod records;
 pub mod router;
 pub mod settings;
+pub mod storage;
 
 pub use almond_types as types;
 pub use error::{ApiError, ApiResult};
@@ -135,6 +136,7 @@ pub struct Core {
     pub chat: chat::State,
     pub recipes: recipes::State,
     pub people: people::State,
+    pub storage: storage::State,
 }
 
 impl std::ops::Deref for Core {
@@ -171,6 +173,7 @@ impl Core {
         let chat = chat::State::init(&shared).await?;
         let recipes = recipes::State::init(&shared).await?;
         let people = people::State::init(&shared).await?;
+        let storage = storage::State::init(&shared).await?;
         let core = Arc::new(Core {
             shared,
             capture,
@@ -179,6 +182,7 @@ impl Core {
             chat,
             recipes,
             people,
+            storage,
         });
 
         let mut router = Router::default();
@@ -189,6 +193,7 @@ impl Core {
         chat::register(&mut router);
         recipes::register(&mut router);
         people::register(&mut router);
+        storage::register(&mut router);
 
         capture::start(core.clone());
         processing::start(core.clone());
@@ -196,6 +201,7 @@ impl Core {
         chat::start(core.clone());
         recipes::start(core.clone());
         people::start(core.clone());
+        storage::start(core.clone());
 
         Ok(Api {
             core,
@@ -210,6 +216,7 @@ impl Core {
         self.chat.shutdown().await;
         self.recipes.shutdown().await;
         self.people.shutdown().await;
+        self.storage.shutdown().await;
         self.node.shutdown().await;
     }
 }

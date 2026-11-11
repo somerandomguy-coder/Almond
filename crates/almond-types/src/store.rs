@@ -52,6 +52,10 @@ pub struct BlobInfo {
     pub holders: Vec<DeviceId>,
 }
 
+/// Record collection of blobs the user deleted (id = BLAKE3 hash). Every device removes its copy
+/// and sync never fetches them again.
+pub const DELETED_BLOBS: &str = "deleted_blob";
+
 /// A synced record (see `EventBody::RecordUpsert`): the latest upsert of `(collection, id)`.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
 #[ts(export)]

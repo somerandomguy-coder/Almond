@@ -102,6 +102,14 @@ export interface ApiMethods {
   "models.slots": [Record<string, never>, ModelSlot[]];
   "llm.status": [{ refresh?: boolean }, LlmStatus];
   "storage.usage": [Record<string, never>, StorageUsage];
+  /** Per meeting: audio on this device (largest first), ⭐ keep, deleted, transcribed. */
+  "storage.meetings": [Record<string, never>, MeetingStorage[]];
+  "storage.audioState": [{ id: Id }, AudioState];
+  /** Delete the recordings (everywhere); the text stays. Refused without a transcript unless `force`. */
+  "storage.deleteAudio": [{ meeting_ids: Id[]; force?: boolean }, DeleteAudioResult];
+  "storage.keepAudio": [{ meeting_id: Id; keep: boolean }, null];
+  /** Retention rule + playback-cache pruning, now. */
+  "storage.cleanup": [Record<string, never>, DeleteAudioResult];
   /** The start-up repair of a damaged database, if one happened and wasn't dismissed. */
   "store.recovery": [Record<string, never>, StoreRecovery | null];
   "store.dismissRecovery": [Record<string, never>, null];
@@ -137,6 +145,34 @@ export interface ApiMethods {
   "people.unlabelSpeaker": [{ meeting_id: Id; speaker: string }, SpeakerLabels];
   /** Labels the core would suggest now (voice, calendar, "me"); nothing is written. */
   "people.suggestions": [{ meeting_id: Id }, SpeakerLabel[]];
+}
+
+/** `storage.meetings` row (Rust: `almond_core::storage::MeetingStorage`). */
+export interface MeetingStorage {
+  meeting_id: Id;
+  title: string;
+  started_at: number;
+  audio_bytes: number;
+  tracks: number;
+  keep_audio: boolean;
+  audio_deleted_at: number | null;
+  transcribed_at: number | null;
+}
+
+/** Per-meeting audio state (synced). */
+export interface AudioState {
+  meeting_id: Id;
+  keep: boolean;
+  deleted_at: number | null;
+  deleted_by: string | null;
+  deleted_reason: "manual" | "retention" | null;
+}
+
+export interface DeleteAudioResult {
+  deleted: number;
+  freed_bytes: number;
+  /** [meeting id, reason] */
+  skipped: [Id, string][];
 }
 
 /** `store.recovery` (Rust: `almond_store::RecoveryReport`). */

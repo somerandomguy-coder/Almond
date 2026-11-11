@@ -17,6 +17,7 @@ import { formatClock } from "../lib/text";
 import { useAppState } from "../state/AppState";
 import { CitationContext, type CitationCtx } from "../components/citationContext";
 import { ActionsPanel, AudioBar, EnhancedNotesView, JobsList } from "../components/meeting/parts";
+import { AudioControls } from "../components/meeting/AudioControls";
 import { ActionItemsView, SummaryView } from "../components/meeting/SummaryView";
 import { NotesEditor } from "../components/NotesEditor";
 import { RecipesPanel } from "../components/recipes/RecipesPanel";
@@ -399,6 +400,9 @@ function MeetingView({ detail }: { detail: MeetingDetail }) {
                 {isRecording ? t("meeting.transcriptLive") : t("meeting.tabs.transcript")}
               </p>
               {!isRecording && lines.length > 0 && <AudioBar positionMs={audioPos} durationMs={duration} onSeek={setAudioPos} available={meeting.audio.length > 0} src={audioSrc} />}
+              {!isRecording && lines.length > 0 && (
+                <AudioControls meetingId={id} hasAudio={meeting.audio.length > 0} hasTranscript={!!transcriptArt} onDeleted={() => setAudioSrc(null)} />
+              )}
             </div>
             <div className="min-h-0 flex-1">
               <TranscriptPanel

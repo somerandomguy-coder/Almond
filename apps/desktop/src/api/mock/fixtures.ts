@@ -455,7 +455,15 @@ function meeting(partial: Partial<Meeting> & Pick<Meeting, "title" | "started_at
     kind: { type: "online", app: "google_meet" },
     calendar_event: null,
     languages: ["vi", "en"],
-    audio: [],
+    // mic + system recordings (fake blobs: `audio.url` returns null in the mock)
+    audio: (["mic", "system"] as const).map((channel, i) => ({
+      channel,
+      blob: `${ulid(partial.started_at + 2 + i).toLowerCase()}`,
+      codec: "opus",
+      sample_rate: 16000,
+      offset_ms: 0,
+      duration_ms: 30 * MIN,
+    })),
     notes_doc: ulid(partial.started_at + 1),
     tags: [],
     ...partial,

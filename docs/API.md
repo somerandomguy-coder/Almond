@@ -127,6 +127,23 @@ never overwritten. Calibration: docs/people-voice.md.
 (`{ client_id, client_secret }`, the user's own Desktop OAuth client; see docs/google-setup.md),
 `llm.ollama_url` (default `http://127.0.0.1:11434`).
 
+### Storage (delete audio, keep the text)
+
+Audio is ~99 % of Almond's data (~22 MB per meeting hour for mic + system); the text stays.
+
+| Method | Params | Result |
+|---|---|---|
+| `storage.meetings` | `{}` | `{ meeting_id, title, started_at, audio_bytes, tracks, keep_audio, audio_deleted_at, transcribed_at }[]` (audio on this device, largest first) |
+| `storage.audioState` | `{ id }` | `{ meeting_id, keep, deleted_at, deleted_by, deleted_reason: "manual" \| "retention" \| null }` |
+| `storage.deleteAudio` | `{ meeting_ids, force? }` | `{ deleted, freed_bytes, skipped: [meeting_id, reason][] }`. Deletes the recordings on **all** devices (synced tombstones, collection `deleted_blob`; sync never refetches them). Refused for a meeting without a transcript unless `force`; a file shared with a meeting that keeps its audio stays. |
+| `storage.keepAudio` | `{ meeting_id, keep }` | `null` (★: automatic cleanup skips it) |
+| `storage.cleanup` | `{}` | same as `deleteAudio`: applies other devices' deletions, the retention rule and prunes the playback cache now (also runs every 10 min) |
+| `store.recovery` / `store.dismissRecovery` | `{}` | the start-up repair report of a damaged database, until dismissed |
+
+Setting `storage.audio_retention_days` (number, unset/0 = never): delete audio that many days after
+the transcript was made, except ★ meetings. Playback copies (`playback/`) are removed when their
+audio is gone, after 7 days unused, and beyond 500 MB.
+
 ## Notifications (server → client)
 
 | Name | Payload |

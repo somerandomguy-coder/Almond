@@ -8,6 +8,7 @@ import { useApi, useLoad, useNotification } from "../api/context";
 import type { LlmStatus } from "../api/types";
 import { errorMessage } from "../api/errors";
 import { LANGUAGES, setLanguage, type UiLang } from "../i18n";
+import { useFormat } from "../lib/format";
 import { formatBytes } from "../lib/text";
 import { useAppState, type Theme } from "../state/AppState";
 import { Button, Card, cx, ErrorNote, Icon, Loading, Pill, SectionTitle, Spinner } from "../components/ui";
@@ -243,10 +244,21 @@ function GoogleClient() {
   );
 }
 
+const RETENTION_CHOICES = [0, 7, 30, 90] as const;
+
 function Storage() {
   const { t } = useTranslation();
   const api = useApi();
+  const f = useFormat();
   const usage = useLoad(() => api.call("storage.usage", {}), [api]);
+  const list = useLoad(() => api.call("storage.meetings", {}), [api]);
+  const [retention, setRetention] = useState<number>(0);
+  const [picked, setPicked] = useState<Set<string>>(new Set());
+  const [msg, setMsg] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  useEffect(() => {
+    void api.call("settings.get", { key: "storage.audio_retention_days" }).then((v) => setRetention(typeof v === "number" ? v : 0));
+  }, [api]);
   const rows: [string, number][] = usage.data
     ? [
         [t("settings.storageDb"), usage.data.db_bytes],
@@ -255,10 +267,52 @@ function Storage() {
         [t("settings.storageModels"), usage.data.models_bytes],
       ]
     : [];
+  const withAudio = (list.data ?? []).filter((m) => m.audio_bytes > 0);
+  const reload = () => {
+    usage.reload();
+    list.reload();
+  };
+  const changeRetention = (days: number) => {
+    setRetention(days);
+    void api.call("settings.set", { key: "storage.audio_retention_days", value: days || null });
+  };
+  const report = (r: { deleted: number; freed_bytes: number; skipped: [string, string][] }) =>
+    setMsg(t("storage.freed", { count: r.deleted, size: formatBytes(r.freed_bytes) }) + (r.skipped.length ? ` ${t("storage.skipped", { count: r.skipped.length })}` : ""));
+  const deletePicked = async () => {
+    if (!picked.size || !window.confirm(t("storage.deleteManyConfirm", { count: picked.size }))) return;
+    setBusy(true);
+    try {
+      report(await api.call("storage.deleteAudio", { meeting_ids: [...picked] }));
+      setPicked(new Set());
+      reload();
+    } catch (e) {
+      setMsg(errorMessage(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+  const cleanup = async () => {
+    setBusy(true);
+    try {
+      report(await api.call("storage.cleanup", {}));
+      reload();
+    } catch (e) {
+      setMsg(errorMessage(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+  const toggle = (id: string) =>
+    setPicked((p) => {
+      const n = new Set(p);
+      if (n.has(id)) n.delete(id);
+      else n.add(id);
+      return n;
+    });
   return (
     <section>
       <SectionTitle>{t("settings.storage")}</SectionTitle>
-      <Card className="flex flex-col gap-2 text-sm">
+      <Card className="flex flex-col gap-4 text-sm">
         <p className="text-muted">{t("settings.storageHint")}</p>
         {usage.error ? (
           <ErrorNote error={usage.error} onRetry={usage.reload} />
@@ -272,6 +326,64 @@ function Storage() {
             ))}
           </dl>
         )}
+
+        <label className="flex flex-col gap-1">
+          <span className="font-medium">{t("storage.retention")}</span>
+          <span className="text-xs text-muted">{t("storage.retentionHint")}</span>
+          <select
+            value={retention}
+            onChange={(e) => changeRetention(Number(e.target.value))}
+            className="w-fit rounded-lg border border-line bg-bg px-2 py-1"
+            aria-label={t("storage.retention")}
+          >
+            {RETENTION_CHOICES.map((d) => (
+              <option key={d} value={d}>
+                {d === 0 ? t("storage.retentionOff") : t("storage.retentionDays", { count: d })}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        <div className="flex flex-col gap-2">
+          <div className="flex items-center gap-2">
+            <span className="font-medium">{t("storage.recordings")}</span>
+            <Button size="sm" variant="ghost" className="ml-auto" onClick={() => void cleanup()} disabled={busy}>
+              {t("storage.cleanupNow")}
+            </Button>
+            <Button size="sm" variant="danger" onClick={() => void deletePicked()} disabled={busy || picked.size === 0}>
+              {t("storage.deleteSelected", { count: picked.size })}
+            </Button>
+          </div>
+          {msg && <p className="text-xs text-muted" role="status">{msg}</p>}
+          {list.error ? (
+            <ErrorNote error={list.error} onRetry={list.reload} />
+          ) : withAudio.length === 0 ? (
+            <p className="text-xs text-muted">{t("storage.noRecordings")}</p>
+          ) : (
+            <ul className="flex max-h-72 flex-col overflow-y-auto" aria-label={t("storage.recordings")}>
+              {withAudio.map((m) => (
+                <li key={m.meeting_id} className="flex items-center gap-2 border-b border-line py-1.5 last:border-0">
+                  <input
+                    type="checkbox"
+                    checked={picked.has(m.meeting_id)}
+                    onChange={() => toggle(m.meeting_id)}
+                    disabled={m.keep_audio || m.transcribed_at == null}
+                    aria-label={m.title || t("recipes.untitled")}
+                  />
+                  <span className="min-w-0 flex-1 truncate">
+                    {m.keep_audio && <span title={t("storage.kept")}>★ </span>}
+                    {m.title || t("recipes.untitled")}
+                    <span className="ml-2 text-xs text-faint">
+                      {f.date(m.started_at)}
+                      {m.transcribed_at == null && ` · ${t("storage.notTranscribed")}`}
+                    </span>
+                  </span>
+                  <span className="font-mono text-xs">{formatBytes(m.audio_bytes)}</span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
       </Card>
     </section>
   );

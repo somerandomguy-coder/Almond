@@ -452,6 +452,14 @@ impl SyncEngine {
         }
         let mut v = vec![];
         for h in out {
+            // deleted by the user on some device (almond_types::store::DELETED_BLOBS): never refetch
+            if self
+                .store
+                .get_record(almond_types::store::DELETED_BLOBS, &h.0)?
+                .is_some()
+            {
+                continue;
+            }
             if almond_store::blobs::validate_hash(&h).is_ok() && !self.blobs.has(&h)? {
                 v.push(h);
             }

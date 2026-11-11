@@ -76,6 +76,9 @@ export class MockApi implements AlmondApi {
   /** Tests: make `chat.ask` fail as it does when Ollama isn't running. */
   /** Tests: a start-up database repair to report (`store.recovery`). */
   storeRecovery: import("../types").StoreRecovery | null = null;
+  /** `storage.*`: audio bytes per meeting and the synced audio state. */
+  audioBytes = new Map<string, number>();
+  audioState = new Map<string, import("../types").AudioState>();
   llmDown = false;
   /** Cookbook (recipes.*): built-ins first, then user recipes. */
   recipes: RecipeInfo[] = builtinRecipes();
@@ -797,6 +800,51 @@ export class MockApi implements AlmondApi {
         error: null,
         offload: this.settings.get("processing.offload") === "prefer_peer" ? "prefer_peer" : "local",
       };
+    },
+    "storage.meetings": function () {
+      return this.meetings
+        .map((m) => {
+          const st = this.audioState.get(m.id);
+          const bytes = st?.deleted_at ? 0 : (this.audioBytes.get(m.id) ?? (m.audio.length ? 22_000_000 * Math.max(1, Math.round(((m.ended_at ?? m.started_at) - m.started_at) / 3_600_000)) : 0));
+          return {
+            meeting_id: m.id,
+            title: m.title,
+            started_at: m.started_at,
+            audio_bytes: bytes,
+            tracks: m.audio.length,
+            keep_audio: st?.keep ?? false,
+            audio_deleted_at: st?.deleted_at ?? null,
+            transcribed_at: this.artifactsFor(m.id, "transcript")[0]?.created_at.wall_ms ?? null,
+          };
+        })
+        .sort((a, b) => b.audio_bytes - a.audio_bytes || b.started_at - a.started_at);
+    },
+    "storage.audioState": function ({ id }) {
+      return this.audioState.get(id) ?? { meeting_id: id, keep: false, deleted_at: null, deleted_by: null, deleted_reason: null };
+    },
+    "storage.deleteAudio": function ({ meeting_ids, force }) {
+      const res = { deleted: 0, freed_bytes: 0, skipped: [] as [string, string][] };
+      for (const id of meeting_ids) {
+        const m = this.meeting(id);
+        const st = this.audioState.get(id) ?? { meeting_id: id, keep: false, deleted_at: null, deleted_by: null, deleted_reason: null };
+        if (!m.audio.length) res.skipped.push([id, "no audio"]);
+        else if (st.deleted_at) res.skipped.push([id, "audio already deleted"]);
+        else if (!force && !this.artifactsFor(id, "transcript").length) res.skipped.push([id, "not transcribed yet"]);
+        else {
+          res.freed_bytes += this.audioBytes.get(id) ?? 22_000_000;
+          this.audioState.set(id, { ...st, deleted_at: Date.now(), deleted_by: "mock", deleted_reason: "manual" });
+          res.deleted += 1;
+        }
+      }
+      return res;
+    },
+    "storage.keepAudio": function ({ meeting_id, keep }) {
+      const st = this.audioState.get(meeting_id) ?? { meeting_id, keep: false, deleted_at: null, deleted_by: null, deleted_reason: null };
+      this.audioState.set(meeting_id, { ...st, keep });
+      return null;
+    },
+    "storage.cleanup": function () {
+      return { deleted: 0, freed_bytes: 0, skipped: [] };
     },
     "storage.usage": function () {
       return { db_bytes: 3_400_000, blobs_bytes: 182_000_000, models_bytes: 2_900_000_000, audio_bytes: 176_000_000 };
