@@ -1,4 +1,4 @@
-﻿//! Runner for the cross-system benchmark in `eval/verify-bench/`: drives `almond-verify` exactly as
+//! Runner for the cross-system benchmark in `eval/verify-bench/`: drives `almond-verify` exactly as
 //! the app's `verify.all` does (rule claim extraction + `VerifierRegistry::with_llm`, aggregate
 //! `precedence.v1`) over a benchmark JSON and writes one JSON line per scored bullet.
 //!
@@ -58,10 +58,7 @@ impl Cached {
         for m in &req.messages {
             m.content.hash(&mut h);
         }
-        req.json_schema
-            .as_ref()
-            .map(|s| s.to_string())
-            .hash(&mut h);
+        req.json_schema.as_ref().map(|s| s.to_string()).hash(&mut h);
         format!("{:016x}", h.finish())
     }
 }
@@ -168,17 +165,16 @@ async fn main() {
     let bench: Bench =
         serde_json::from_str(&std::fs::read_to_string(&input).expect("read input")).expect("parse");
     let stats = Arc::new(std::sync::Mutex::new((0u64, 0u64, 0u64)));
-    let registry = match config.as_str() {
-        "symbolic" => VerifierRegistry::symbolic(VerifyConfig::default()),
+    let llm: Option<Arc<dyn LlmProvider>> = match config.as_str() {
+        "symbolic" => None,
         _ => {
             let raw: Arc<dyn LlmProvider> = Arc::new(ollama::Ollama::new(&url));
             raw.health().await.expect("ollama reachable");
-            let llm: Arc<dyn LlmProvider> = Arc::new(Cached {
+            Some(Arc::new(Cached {
                 inner: raw,
                 dir: cache.clone(),
                 stats: stats.clone(),
-            });
-            VerifierRegistry::with_llm(VerifyConfig::default(), llm, &model)
+            }))
         }
     };
     let policy = AggregatePolicy::default();
@@ -195,7 +191,13 @@ async fn main() {
         let cfg = VerifyConfig {
             tz_offset_min: Some(fm.tz_offset_min),
         };
-        let reference = almond_verify::dates::reference_day(b.meeting.started_at, cfg.tz_offset_min);
+        // Same verifier set as the app's `verify.all`, in the meeting's time zone.
+        let registry = match &llm {
+            None => VerifierRegistry::symbolic(cfg.clone()),
+            Some(l) => VerifierRegistry::with_llm(cfg.clone(), l.clone(), &model),
+        };
+        let reference =
+            almond_verify::dates::reference_day(b.meeting.started_at, cfg.tz_offset_min);
         let us = units(&b.summary).expect("units");
         let people: Vec<String> = fm.speakers.values().cloned().collect();
         let (claims, _) = extractor
@@ -276,8 +278,13 @@ async fn main() {
                 .map(|c| c.id.as_str())
                 .collect();
             let mut per: BTreeMap<String, (VerdictLabel, f32)> = BTreeMap::new();
-            for v in verdicts.iter().filter(|v| cids.contains(&v.claim_id.as_str())) {
-                let e = per.entry(v.verifier.clone()).or_insert((v.label, v.confidence));
+            for v in verdicts
+                .iter()
+                .filter(|v| cids.contains(&v.claim_id.as_str()))
+            {
+                let e = per
+                    .entry(v.verifier.clone())
+                    .or_insert((v.label, v.confidence));
                 if severity(v.label) > severity(e.0) {
                     *e = (v.label, v.confidence);
                 }

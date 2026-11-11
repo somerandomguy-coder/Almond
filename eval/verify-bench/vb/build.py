@@ -33,6 +33,7 @@ from vb.paths import ALMOND_FIXTURES, CHECK_MODEL, OUT, PRIVATE, ensure
 
 SEED = 20261112
 WINDOW_CHARS = 2400
+EXTRACTIVE_MIN = 0.6  # share of a bullet's content tokens that must occur in its cited segments
 RADIUS = 1  # evidence = cited segments +- RADIUS neighbours (same as verify.nli)
 
 # ------------------------------------------------------------------------------------------ io
@@ -116,7 +117,9 @@ def summarize() -> None:
     for m in personal_meetings():
         tr = m["transcript"]
         bullets = []
-        for w in windows(tr):
+        # two passes (large + small windows) for more, finer-grained bullets; duplicates are
+        # removed by the filter
+        for w in windows(tr) + windows(tr, max_chars=1100):
             langs = Counter(tr[i][1] for i in w)
             lang = "Vietnamese" if langs.get("vi", 0) >= langs.get("en", 0) else "English"
             chars = sum(len(tr[i][2]) for i in w)
@@ -138,8 +141,55 @@ you we said says say suggested noted mentioned asked explained stated that will 
 does did has have had not no so if about also there their them his her its our your my me""".split())
 
 
+_VI_DIGIT = {"khong": 0, "mot": 1, "hai": 2, "ba": 3, "bon": 4, "tu": 4, "nam": 5, "lam": 5, "sau": 6, "bay": 7,
+             "tam": 8, "chin": 9}
+_EN_DIGIT = {"zero": 0, "one": 1, "two": 2, "three": 3, "four": 4, "five": 5, "six": 6, "seven": 7, "eight": 8,
+             "nine": 9, "ten": 10, "eleven": 11, "twelve": 12, "thirteen": 13, "fourteen": 14, "fifteen": 15,
+             "sixteen": 16, "seventeen": 17, "eighteen": 18, "nineteen": 19, "twenty": 20, "thirty": 30, "forty": 40,
+             "fifty": 50, "sixty": 60, "seventy": 70, "eighty": 80, "ninety": 90}
+_MULT = {"tram": 100, "hundred": 100, "nghin": 1000, "ngan": 1000, "thousand": 1000, "trieu": 10**6, "million": 10**6,
+         "ty": 10**9, "billion": 10**9}
+_AMBIG = {"mot", "ba", "tu", "nam", "sau", "bay", "tam", "khong", "lam", "one"}
+_UNITISH = {"phut", "gio", "tieng", "ngay", "tuan", "thang", "nam", "nguoi", "lan", "tuoi", "cai", "con", "chuc", "muoi",
+            "tram", "nghin", "ngan", "trieu", "ty", "rưỡi", "ruoi", "minutes", "hours", "days", "weeks", "years", "people"}
+
+
+def spoken_numbers(folded: str) -> list[str]:
+    """Digits for spelled-out numbers in ASR text ("ba muoi phut" -> 30, "twelve" -> 12), so that a
+    bullet's "30 phút" can be checked against a transcript that says "BA MƯƠI PHÚT"."""
+    words = re.findall(r"[a-z]+", folded)
+    out, i = [], 0
+    while i < len(words):
+        j, total, cur, used = i, 0, 0, 0
+        while j < len(words):
+            w = words[j]
+            if w in _VI_DIGIT or w in _EN_DIGIT:
+                cur += _VI_DIGIT.get(w, _EN_DIGIT.get(w, 0)) if not (w == "nam" and used and words[j - 1] == "muoi") else 5
+            elif w == "muoi":
+                cur = (cur or 1) * 10
+            elif w in _MULT:
+                total += (cur or 1) * _MULT[w]
+                cur = 0
+            elif w in ("linh", "le", "and") and used:
+                pass
+            else:
+                break
+            used += 1
+            j += 1
+        if used:
+            single_ambiguous = used == 1 and words[i] in _AMBIG
+            nxt = words[j] if j < len(words) else ""
+            if not single_ambiguous or nxt in _UNITISH:
+                out.append(str(total + cur))
+            i = j
+        else:
+            i += 1
+    return out
+
+
 def toks(s: str) -> list[str]:
-    return [t for t in re.findall(r"[a-z0-9]+", M.fold(s)) if len(t) >= 2 or t.isdigit()]
+    f = M.fold(s)
+    return [t for t in re.findall(r"[a-z0-9]+", f) if len(t) >= 2 or t.isdigit()] + spoken_numbers(f)
 
 
 def content(s: str) -> list[str]:
@@ -147,8 +197,21 @@ def content(s: str) -> list[str]:
 
 
 def nums(s: str) -> set[str]:
-    return set(re.findall(r"\d+(?:[.,]\d+)?", s))
+    return set(re.findall(r"\d+(?:[.,]\d+)?", s)) | set(spoken_numbers(M.fold(s)))
 
+
+CHECK_MODEL2 = "llama3.1:8b"  # second independent cross-check (neither is a benchmarked judge)
+# folded tokens/phrases: scope words in a bullet must occur in its source; a hedged source must
+# keep a hedge or an opinion attribution in the bullet
+SCOPE_WORDS = ["some", "many", "most", "all", "every", "few", "several", "always", "never", "often", "usually",
+               "everyone", "nobody", "mot so", "nhieu", "tat ca", "hau het", "luon", "thuong xuyen",
+               "khong bao gio", "it khi"]
+SOURCE_HEDGES = ["i think", "maybe", "probably", "i guess", "might", "perhaps", "not sure", "co le", "chac", "hinh nhu",
+                 "khong biet", "chac la", "i feel"]
+KEEPS_HEDGE = ["think", "thinks", "believe", "believes", "feel", "feels", "felt", "guess", "maybe", "might", "may",
+               "probably", "possibly", "perhaps", "suggested", "unsure", "not sure", "could", "co le", "chac", "hinh nhu",
+               "co the", "nghi", "cho rang", "thay", "cam thay", "khoang", "du doan", "khong chac", "khong biet",
+               "opinion", "view", "speculated", "wondered"]
 
 CHECK_SYSTEM = """You check one bullet from a meeting summary against the transcript segments it cites. \
 Answer "entailed" only if everything in the bullet (facts, numbers, names, who said it, certainty, \
@@ -171,6 +234,7 @@ def filter_bullets() -> None:
     raw = load_json(PRIVATE / "summaries_raw.json")
     meetings = {m["id"]: m for m in personal_meetings()}
     check = Ollama(PRIVATE / "cache" / "check.sqlite", model=CHECK_MODEL)
+    check2 = Ollama(PRIVATE / "cache" / "check.sqlite", model=CHECK_MODEL2)
     kept, stats = {}, {}
     for mid, bullets in raw.items():
         tr = meetings[mid]["transcript"]
@@ -190,7 +254,7 @@ def filter_bullets() -> None:
             cited = " ".join(f"{tr[c][0]} {tr[c][2]}" for c in cites)
             ct = set(toks(cited))
             cont = content(text)
-            if not cont or sum(t in ct for t in cont) / len(cont) < 0.7:
+            if not cont or sum(t in ct for t in cont) / len(cont) < EXTRACTIVE_MIN:
                 st["not_extractive"] += 1
                 continue
             if not nums(text) <= nums(cited):
@@ -203,6 +267,13 @@ def filter_bullets() -> None:
             if spk and not set(spk) <= {tr[c][0] for c in cites}:
                 st["speaker_not_cited"] += 1
                 continue
+            fb, fc = " " + " ".join(toks(text)) + " ", " " + " ".join(toks(cited)) + " "
+            if any(f" {w} " in fb and f" {w} " not in fc for w in SCOPE_WORDS):
+                st["scope_word_not_in_source"] += 1
+                continue
+            if any(f" {w} " in fc for w in SOURCE_HEDGES) and not any(f" {w} " in fb for w in KEEPS_HEDGE):
+                st["hedge_lost"] += 1
+                continue
             cs = set(cont)
             if any(len(cs & s) / max(1, len(cs | s)) > 0.8 for s in seen):
                 st["duplicate"] += 1
@@ -211,6 +282,11 @@ def filter_bullets() -> None:
                            CHECK_SCHEMA)
             if not j or j.get("label") != "entailed":
                 st["crosscheck_rejected"] += 1
+                continue
+            j2 = check2.json(CHECK_SYSTEM, f"BULLET: {text}\n\nCITED SEGMENTS:\n{render(tr, sorted(set(cites)))}",
+                             CHECK_SCHEMA)
+            if not j2 or j2.get("label") != "entailed":
+                st["crosscheck2_rejected"] += 1
                 continue
             seen.append(cs)
             st["kept"] += 1

@@ -93,7 +93,7 @@ def _bump(value: str) -> str:
 def mut_number(b, ctx, rng):
     t, lang = b["text"], b["lang"]
     months = "|".join(_WEEKDAYS[7:]) + "|tháng|thg"
-    m = [x for x in re.finditer(r"(?<![\d.,:/])(\d{1,3}(?:,\d{3})+|\d+(?:[.,]\d+)?)(?![\d:/])", t)
+    m = [x for x in re.finditer(r"(?<![\wÀ-ỹ.,:/])(\d{1,3}(?:,\d{3})+|\d+(?:[.,]\d+)?)(?![\d:/])", t)
          if not re.search(rf"(?:{months})\s*$", t[: x.start(1)], re.IGNORECASE)
          and not re.match(rf"\s*(?:{months})\b", t[x.end(1):], re.IGNORECASE)]
     if m:
@@ -118,7 +118,9 @@ _CAP = re.compile(r"(?<![\wÀ-ỹ])([A-ZĐ][\wÀ-ỹ]+(?:[ .-][A-ZĐ0-9][\wÀ-�
 _NOT_ENT = {"the", "a", "an", "s1", "s2", "s3", "s4", "s5", "s6", "i", "we", "they", "he", "she", "it", "this",
             "that", "there", "người", "chúng", "họ", "anh", "chị", "em", "cô", "chú", "ông", "bà", "nhóm",
             "team", "everyone", "mọi", "ai", "có", "không", "speaker", "mr", "ms", "mrs", "dr", "cr", "councillor",
-            "mayor", "council", "staff", "chair", "officer", "on", "in", "at", "by", "for", "and", "but", "if"}
+            "mayor", "council", "staff", "chair", "officer", "on", "in", "at", "by", "for", "and", "but", "if", "do",
+            "so", "yeah", "yes", "okay", "ok", "what", "how", "why", "when", "where", "well", "like", "oh", "um", "uh",
+            "you", "my", "our", "your", "is", "are", "was", "can", "just", "then", "because", "or", "not", "no", "all"}
 _WEEKDAYS = ("monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday", "january", "february",
              "march", "april", "may", "june", "july", "august", "september", "october", "november", "december")
 
@@ -129,7 +131,7 @@ def entities(text: str, first_ok: bool = False) -> list[str]:
         e = m.group(1).strip(" .-")
         if not first_ok and m.start() == 0:
             continue
-        if re.search(r"thứ\s*$", text[: m.start()], re.IGNORECASE):
+        if re.search(r"thứ\s*$", text[: m.start()], re.IGNORECASE) or re.search(r"[.!?:;\"]\s*$", text[: m.start()]):
             continue
         low = e.lower()
         if low in _NOT_ENT or low.split()[0] in _NOT_ENT or low in _WEEKDAYS or low.startswith("thứ") \
@@ -224,6 +226,11 @@ def mut_hedge_add(b, ctx, rng):
     keep = (first in ctx["entities"] or first in ctx["speakers"] or first.lower() in _WEEKDAYS
             or re.fullmatch(r"S\d+", first) or (len(first) > 1 and first[1:] != first[1:].lower())
             or first.lower() not in ctx.get("lower_vocab", set()))
+    # hedge the reported content, not the reporting frame ("S3 said that possibly X")
+    frame = re.match(r"^(.{0,40}?\b(?:that|rằng|là)\s+)(.)", t) if b["lang"] == "en" else \
+        re.match(r"^(.{0,40}?(?:rằng|cho biết|nói|kể|chia sẻ)\s+)(.)", t)
+    if frame and re.match(r"^(S\d+|[A-ZĐ])", t):
+        return t[: frame.end(1)] + ("có lẽ " if b["lang"] == "vi" else "possibly ") + t[frame.end(1):]
     head = t if keep else t[0].lower() + t[1:]
     return ("Có lẽ " if b["lang"] == "vi" else "Possibly, ") + head
 
@@ -240,8 +247,7 @@ _VI_Q = [(W + r"tất cả" + E, "một số"), (W + r"mọi người" + E, "m�
          (W + r"một số" + E, "tất cả"), (W + r"một vài" + E, "tất cả"), (W + r"vài" + E, "rất nhiều"),
          (W + r"luôn luôn" + E, "thỉnh thoảng"), (W + r"luôn" + E, "thỉnh thoảng"), (W + r"thường xuyên" + E, "hiếm khi"),
          (W + r"thường" + E, "hiếm khi"), (W + r"thỉnh thoảng" + E, "luôn luôn"), (W + r"ít" + E, "nhiều"),
-         (W + r"cả hai" + E, "chỉ một"), (W + r"các" + E, "một vài"), (W + r"những" + E, "một vài"),
-         (W + r"chỉ" + E, "cả"), (W + r"toàn bộ" + E, "một phần")]
+         (W + r"cả hai" + E, "chỉ một"), (W + r"chỉ" + E, "cả"), (W + r"toàn bộ" + E, "một phần")]
 
 
 def mut_quantifier(b, ctx, rng):
@@ -286,7 +292,7 @@ def mut_temporal(b, ctx, rng):
     if m:
         d = (int(m.group(1)) + 3 - 1) % 28 + 1
         return t[: m.start(1)] + str(d) + t[m.end(1):]
-    m = re.search(r"(?<!\d)(\d{1,2})\s*(h|giờ|g|am|pm|:\d\d)", t, flags=re.IGNORECASE)
+    m = re.search(r"(?<![\d\wÀ-ỹ])(\d{1,2})\s*((?:h|giờ|g|am|pm)(?![\wÀ-ỹ])|:\d\d)", t, flags=re.IGNORECASE)
     if m:
         h = (int(m.group(1)) + 2) % 24 or 1
         return t[: m.start(1)] + str(h) + t[m.end(1):]

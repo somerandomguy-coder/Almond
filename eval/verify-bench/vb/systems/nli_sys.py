@@ -54,6 +54,7 @@ def premises(item: dict) -> list[str]:
 
 def summac(items: list[dict], cache_dir) -> list[dict]:
     nli = NLI()
+    nli.predict([("warm up", "warm up")])  # CUDA warm-up outside the timed loop
     rows = []
     for it in items:
         t0 = time.perf_counter()
@@ -91,6 +92,7 @@ def _doc(it: dict, texts: dict | None = None) -> str:
 
 def minicheck(items: list[dict], cache_dir, translate: bool = False) -> list[dict]:
     mc = MiniCheck()
+    mc.p_support("warm up", "warm up")
     tr = None
     if translate:
         from vb.systems.llm_sys import Translator
