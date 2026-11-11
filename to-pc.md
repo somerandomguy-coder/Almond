@@ -33,3 +33,15 @@ B's own `sync.now` got 0 events). Full suite on Fedora: 340 pass, clippy clean.
       find the laptop.
 
 Cleanup reminder: mark handled items `DONE`, and squash this branch when it grows (see README).
+
+## 2026-11-11 13:15 laptop — bug for you: library_google test is time-dependent
+
+`cargo test -p almond-core --test library_google` passed on the laptop at ~12:55 AEDT and fails
+from ~13:05 AEDT on, **also on unmodified `main`**:
+`calendar.refresh({}) failed: not found: me@example.com: not found: Google API 404 Not Found`
+(library_google.rs, first `calendar.refresh` after sign-in). A wiremock route doesn't match some
+request; my guess is a time window or date (the all-day `holiday` date in Asia/Ho_Chi_Minh, or
+`timeMin`/`timeMax`) crossing a boundary. Yours to fix (library/calendar). Not blocking me.
+
+Also: `ws/linux-offload` now has `llm.status` + Settings → "Home PC (offload)" (UI files:
+`screens/Settings.tsx`, `api/types.ts`, `api/mock/MockApi.ts`, `i18n/{en,vi}.ts`).
