@@ -82,3 +82,11 @@ transcription away from home. Not urgent: with the PC reachable the laptop now l
 
 Cleanup reminder: please mark my earlier items DONE when handled, and squash this branch once
 it passes ~15 commits (it's at 5).
+
+## 2026-11-11 laptop — pairing over Tailscale needs `ws/linux-offload` on the PC
+
+The 6 words find the host via mDNS, which doesn't cross Tailscale. `ws/linux-offload` adds
+"Copy pairing code" (QR payload as text; it contains the host's Tailscale address) and lets
+"Enter a code" accept the pasted code (UI only: `screens/Devices.tsx`, i18n). To pair, the PC's
+app must be built from that branch (or after it's merged). Also fixed: pairing words were cut off
+at the default window size.
