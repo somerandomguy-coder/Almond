@@ -200,9 +200,13 @@ impl Recorder {
         }
     }
 
+    pub(crate) async fn is_recording(&self) -> bool {
+        self.active.lock().await.is_some()
+    }
+
     /// Open one stream per channel. Returns the streams and the wall-clock time (unix ms) of
     /// their common `t0_ms = 0`.
-    async fn open(
+    pub(super) async fn open(
         &self,
         channels: &[AudioChannel],
         p: &StartRecordingParams,
@@ -357,7 +361,15 @@ fn channels_for(core: &Core, p: &StartRecordingParams) -> Vec<AudioChannel> {
     v
 }
 
-pub(crate) async fn start(core: &Arc<Core>, p: StartRecordingParams) -> Result<RecordingStatus> {
+pub(crate) async fn start(
+    core: &Arc<Core>,
+    mut p: StartRecordingParams,
+) -> Result<RecordingStatus> {
+    // The mic test holds the device and resets the capture clock: stop it first.
+    super::mictest::stop(core).await;
+    if p.mic_device.is_none() {
+        p.mic_device = super::preferred_mic(core);
+    }
     let rec = &core.capture.rec;
     let mut active = rec.active.lock().await;
     if let Some(a) = active.as_ref() {

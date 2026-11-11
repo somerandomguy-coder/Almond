@@ -20,6 +20,7 @@
 pub mod engines;
 pub mod import;
 pub mod live;
+mod mictest;
 pub mod models;
 pub mod playback;
 pub mod recording;
@@ -43,6 +44,7 @@ pub struct State {
     pub(crate) rec: recording::Recorder,
     pub(crate) speech: Arc<engines::Speech>,
     pub(crate) downloads: std::sync::Mutex<std::collections::BTreeSet<String>>,
+    pub(crate) mic_test: mictest::MicTest,
 }
 
 impl State {
@@ -55,6 +57,7 @@ impl State {
             rec: recording::Recorder::new(),
             speech,
             downloads: Default::default(),
+            mic_test: Default::default(),
         })
     }
 
@@ -92,6 +95,16 @@ struct AudioUrl {
     url: Option<String>,
 }
 
+/// Setting `audio.mic_device`: the microphone chosen in the mic test (`audio.devices` id).
+pub(crate) const MIC_DEVICE: &str = "audio.mic_device";
+
+pub(crate) fn preferred_mic(core: &Core) -> Option<String> {
+    core.setting_as::<String>(MIC_DEVICE)
+        .ok()
+        .flatten()
+        .filter(|s| !s.trim().is_empty())
+}
+
 pub(crate) fn register(r: &mut Router) {
     r.add(
         "recording.start",
@@ -108,6 +121,16 @@ pub(crate) fn register(r: &mut Router) {
     r.add("audio.devices", |core, _: NoParams| async move {
         let devs: Vec<AudioDeviceInfo> = core.capture.rec.list_devices().await?;
         ApiResult::Ok(devs)
+    });
+    r.add(
+        "audio.testStart",
+        |core, p: mictest::TestStartParams| async move {
+            ApiResult::Ok(mictest::start(&core, p).await?)
+        },
+    );
+    r.add("audio.testStop", |core, _: NoParams| async move {
+        mictest::stop(&core).await;
+        ApiResult::Ok(serde_json::Value::Null)
     });
     r.add("audio.url", |core, p: AudioUrlParams| async move {
         let path = playback::playable_path(&core, &p.meeting_id, p.channel).await?;
