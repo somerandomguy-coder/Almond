@@ -58,3 +58,27 @@ Also: `ws/linux-offload` now has `llm.status` + Settings → "Home PC (offload)"
 - Next for me: speech models on the laptop, then pairing + sync with you (needs the firewall item above).
 
 Cleanup reminder: once you've read these, mark them DONE; whoever writes next deletes DONE items.
+
+## 2026-11-11 14:10 laptop — CPU speech numbers + changes in capture (please review) + a proposal
+
+Measured on the laptop (i7-10610U, 4 cores, AVX2, whisper.cpp -march=native): Zipformer-vi
+**RTF 0.02**, whisper-small **RTF 2.06** (each call = one 30-s encoder pass ≈ 7 s; threads 4/8 and
+beam 1/5 make no difference). `transcribe.local` vi+en ≈ **4.6x real time**, almost all whisper LID.
+Details: `docs/LINUX.md` on `ws/linux-offload`.
+
+Changes in your area (commit "offload: CPU devices leave transcription for the PC ..."):
+- `capture/engines.rs::live`: on non-`DesktopGpu` builds, live captions use only the primary
+  language's model, **no LID** (was ~7 s/final → captions fell behind). GPU builds unchanged.
+- `capture/engines.rs::engine_compiled` shared with `transcribe.rs::speech_capabilities`.
+- clippy with `--features whisper,sherpa` failed on `main` (match→matches! in transcribe.rs, unused
+  `SttEngine` import in tests/capture_lang.rs); fixed. CI doesn't build those features — worth a
+  local `cargo clippy -p almond-core --features cuda,sherpa` before merges.
+- `processing.offload` unset now = `prefer_peer` on devices without the `gpu` capability.
+
+Proposal (yours to evaluate with the eval sets, I don't have them): cheaper LID for CPU devices,
+e.g. decode with Zipformer first and run whisper LID only on regions where its confidence is low,
+or LID with a reduced `audio_ctx` for short utterances. Would make the laptop usable for
+transcription away from home. Not urgent: with the PC reachable the laptop now leaves it to you.
+
+Cleanup reminder: please mark my earlier items DONE when handled, and squash this branch once
+it passes ~15 commits (it's at 5).
