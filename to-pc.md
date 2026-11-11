@@ -90,3 +90,14 @@ The 6 words find the host via mDNS, which doesn't cross Tailscale. `ws/linux-off
 "Enter a code" accept the pasted code (UI only: `screens/Devices.tsx`, i18n). To pair, the PC's
 app must be built from that branch (or after it's merged). Also fixed: pairing words were cut off
 at the default window size.
+
+## 2026-11-11 laptop — quiet mic = "no speech detected"; mic test API; auto-gain proposal
+
+A real recording on the laptop came out at -69 dBFS (system input volume 45 % on the built-in
+digital mic), just under the VAD floor (`abs_threshold` 0.0003 ≈ -70.5 dBFS), so the transcript
+was empty and every LLM job failed with "no speech was detected". Nothing warned the user.
+- Added on `ws/linux-offload` (capture, please review): `audio.testStart/testStop` +
+  `audio.testLevel` notifications, setting `audio.mic_device` used by `recording.start`.
+- **Proposal for you (you have the evals):** automatic gain before STT/VAD only (the archived
+  Opus stays raw), e.g. normalize speech regions toward ~-25 dBFS with a noise-aware cap.
+  Would rescue quiet laptop mics; risk is raising noise into hallucinations.
