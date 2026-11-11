@@ -42,6 +42,8 @@ impl EventKind {
     pub const JOB_FINISHED: &'static str = "job.finished";
     pub const DEVICE_INFO: &'static str = "device.info";
     pub const BLOB_AVAILABLE: &'static str = "blob.available";
+    pub const RECORD_UPSERT: &'static str = "record.upsert";
+    pub const RECORD_DELETE: &'static str = "record.delete";
 }
 
 /// Typed view of known event bodies. Unknown kinds decode to `None` from [`EventBody::decode`].
@@ -72,6 +74,19 @@ pub enum EventBody {
         size: u64,
         mime: String,
     },
+    /// Generic synced document, last-writer-wins by (hlc, device) per `(collection, id)`.
+    /// Collections: [`crate::people::COLLECTION`], [`crate::recipes::COLLECTION`],
+    /// [`crate::chat::COLLECTION`], ... New features add collections, not event kinds.
+    RecordUpsert {
+        collection: String,
+        id: String,
+        body: serde_json::Value,
+    },
+    /// LWW tombstone for a record.
+    RecordDelete {
+        collection: String,
+        id: String,
+    },
 }
 
 impl EventBody {
@@ -89,6 +104,8 @@ impl EventBody {
             JobFinished(_) => EventKind::JOB_FINISHED,
             DeviceInfo(_) => EventKind::DEVICE_INFO,
             BlobAvailable { .. } => EventKind::BLOB_AVAILABLE,
+            RecordUpsert { .. } => EventKind::RECORD_UPSERT,
+            RecordDelete { .. } => EventKind::RECORD_DELETE,
         }
     }
 
@@ -112,6 +129,14 @@ impl EventBody {
             BlobAvailable { hash, size, mime } => {
                 serde_json::json!({ "hash": hash, "size": size, "mime": mime })
             }
+            RecordUpsert {
+                collection,
+                id,
+                body,
+            } => serde_json::json!({ "collection": collection, "id": id, "body": body }),
+            RecordDelete { collection, id } => {
+                serde_json::json!({ "collection": collection, "id": id })
+            }
         })
     }
 
@@ -132,6 +157,13 @@ impl EventBody {
         struct CalDel {
             source: String,
             event_id: String,
+        }
+        #[derive(Deserialize)]
+        struct Rec {
+            collection: String,
+            id: String,
+            #[serde(default)]
+            body: serde_json::Value,
         }
         #[derive(Deserialize)]
         struct Blob {
@@ -170,6 +202,21 @@ impl EventBody {
                     hash: x.hash,
                     size: x.size,
                     mime: x.mime,
+                }
+            }
+            EventKind::RECORD_UPSERT => {
+                let r: Rec = fv(b)?;
+                EventBody::RecordUpsert {
+                    collection: r.collection,
+                    id: r.id,
+                    body: r.body,
+                }
+            }
+            EventKind::RECORD_DELETE => {
+                let r: Rec = fv(b)?;
+                EventBody::RecordDelete {
+                    collection: r.collection,
+                    id: r.id,
                 }
             }
             _ => return Ok(None),

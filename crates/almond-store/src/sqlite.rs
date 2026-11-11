@@ -8,7 +8,7 @@ use almond_types::event::{Event, EventBody, EventKind};
 use almond_types::job::{Job, JobLease, JobOutcome, JobStatus};
 use almond_types::meeting::Meeting;
 pub use almond_types::store::BlobInfo;
-use almond_types::store::{JobRecord, MeetingQuery, SearchHit, Store};
+use almond_types::store::{JobRecord, MeetingQuery, Record, SearchHit, Store};
 use almond_types::sync::{DeviceInfo, VersionVector};
 use almond_types::time::{HlcClock, UnixMs, now_ms};
 use almond_types::{BlobHash, DeviceId, Error, Hlc, Id, Result};
@@ -376,6 +376,48 @@ impl SqliteStore {
                     .sql()?;
                 }
             }
+            EventBody::RecordUpsert {
+                collection,
+                id,
+                body,
+            } => {
+                let cur = Self::lww_get(
+                    tx,
+                    "records",
+                    "collection = ?1 AND id = ?2",
+                    &[&collection, &id],
+                )?;
+                if newer(cur) {
+                    tx.execute(
+                        "INSERT INTO records (collection, id, body, deleted, hlc_wall, hlc_logical, device)
+                         VALUES (?1, ?2, ?3, 0, ?4, ?5, ?6)
+                         ON CONFLICT(collection, id) DO UPDATE SET body = excluded.body, deleted = 0,
+                           hlc_wall = excluded.hlc_wall, hlc_logical = excluded.hlc_logical,
+                           device = excluded.device",
+                        params![collection, id, body.to_string(), w, l, dev],
+                    )
+                    .sql()?;
+                }
+            }
+            EventBody::RecordDelete { collection, id } => {
+                let cur = Self::lww_get(
+                    tx,
+                    "records",
+                    "collection = ?1 AND id = ?2",
+                    &[&collection, &id],
+                )?;
+                if newer(cur) {
+                    tx.execute(
+                        "INSERT INTO records (collection, id, body, deleted, hlc_wall, hlc_logical, device)
+                         VALUES (?1, ?2, NULL, 1, ?3, ?4, ?5)
+                         ON CONFLICT(collection, id) DO UPDATE SET body = NULL, deleted = 1,
+                           hlc_wall = excluded.hlc_wall, hlc_logical = excluded.hlc_logical,
+                           device = excluded.device",
+                        params![collection, id, w, l, dev],
+                    )
+                    .sql()?;
+                }
+            }
             EventBody::BlobAvailable { hash, size, mime } => {
                 tx.execute(
                     "INSERT OR IGNORE INTO blobs (hash, size, mime) VALUES (?1, ?2, ?3)",
@@ -507,6 +549,45 @@ impl SqliteStore {
             .sql()?;
         s.map(|s| serde_json::from_str(&s).map_err(Into::into))
             .transpose()
+    }
+
+    fn records_where(&self, cond: &str, args: &[&dyn rusqlite::ToSql]) -> Result<Vec<Record>> {
+        let g = self.lock();
+        let mut st = g
+            .conn
+            .prepare(&format!(
+                "SELECT collection, id, body, hlc_wall, hlc_logical, device FROM records
+                 WHERE deleted = 0 AND {cond} ORDER BY id"
+            ))
+            .sql()?;
+        let rows = st
+            .query_map(args, |r| {
+                Ok((
+                    r.get::<_, String>(0)?,
+                    r.get::<_, String>(1)?,
+                    r.get::<_, String>(2)?,
+                    r.get::<_, i64>(3)?,
+                    r.get::<_, i64>(4)?,
+                    r.get::<_, String>(5)?,
+                ))
+            })
+            .sql()?
+            .collect::<rusqlite::Result<Vec<_>>>()
+            .sql()?;
+        rows.into_iter()
+            .map(|(collection, id, body, w, l, d)| {
+                Ok(Record {
+                    collection,
+                    id,
+                    body: serde_json::from_str(&body)?,
+                    hlc: Hlc {
+                        wall_ms: w,
+                        logical: l as _,
+                    },
+                    device: DeviceId(d),
+                })
+            })
+            .collect()
     }
 
     fn job_json<T: serde::de::DeserializeOwned>(
@@ -917,6 +998,17 @@ impl Store for SqliteStore {
 
     fn known_blobs(&self) -> Result<Vec<BlobInfo>> {
         self.known_blobs_impl()
+    }
+
+    fn get_record(&self, collection: &str, id: &str) -> Result<Option<Record>> {
+        Ok(self
+            .records_where("collection = ?1 AND id = ?2", &[&collection, &id])?
+            .into_iter()
+            .next())
+    }
+
+    fn list_records(&self, collection: &str) -> Result<Vec<Record>> {
+        self.records_where("collection = ?1", &[&collection])
     }
 
     fn search(&self, text: &str, limit: u32) -> Result<Vec<SearchHit>> {

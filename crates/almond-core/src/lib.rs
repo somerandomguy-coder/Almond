@@ -12,6 +12,9 @@
 //! | [`capture`] | Agent "capture" | `recording.*`, `audio.*`, live captions, `transcribe.*` processor, `models.*` (speech) |
 //! | [`processing`] | Agent "processing" | `artifacts.*`, `jobs.*`, `pipeline.*`, `verify.*`, `actions.*`, job runner, LLM + verify processors, `models.*` (LLM) |
 //! | [`library`] | Agent "library" | `meetings.*`, `notes.*`, `search.*`, `calendar.*`, `mail.*`, `sync.*`, `storage.*`, reminders, auto-sync |
+//! | [`chat`] | feature "chat" (docs/FEATURES-2.md) | `chat.*` ("Ask Almond") |
+//! | [`recipes`] | feature "recipes" | `recipes.*`, `recipe.llm` processor |
+//! | [`people`] | feature "people" | `people.*`, speaker labels, voice matching |
 //!
 //! Each module keeps its own state in a `State` struct (a field of [`Core`]) and has:
 //! - `State::init(&Shared) -> Result<State>` — build, called once by [`Core::open`];
@@ -22,10 +25,14 @@
 //! Modules talk to each other only through `Core`'s public methods/fields and the store's event log.
 
 pub mod capture;
+pub mod chat;
 pub mod error;
 pub mod events;
 pub mod library;
+pub mod people;
 pub mod processing;
+pub mod recipes;
+pub mod records;
 pub mod router;
 pub mod settings;
 
@@ -125,6 +132,9 @@ pub struct Core {
     pub capture: capture::State,
     pub processing: processing::State,
     pub library: library::State,
+    pub chat: chat::State,
+    pub recipes: recipes::State,
+    pub people: people::State,
 }
 
 impl std::ops::Deref for Core {
@@ -158,11 +168,17 @@ impl Core {
         let capture = capture::State::init(&shared).await?;
         let processing = processing::State::init(&shared).await?;
         let library = library::State::init(&shared).await?;
+        let chat = chat::State::init(&shared).await?;
+        let recipes = recipes::State::init(&shared).await?;
+        let people = people::State::init(&shared).await?;
         let core = Arc::new(Core {
             shared,
             capture,
             processing,
             library,
+            chat,
+            recipes,
+            people,
         });
 
         let mut router = Router::default();
@@ -170,10 +186,16 @@ impl Core {
         capture::register(&mut router);
         processing::register(&mut router);
         library::register(&mut router);
+        chat::register(&mut router);
+        recipes::register(&mut router);
+        people::register(&mut router);
 
         capture::start(core.clone());
         processing::start(core.clone());
         library::start(core.clone());
+        chat::start(core.clone());
+        recipes::start(core.clone());
+        people::start(core.clone());
 
         Ok(Api {
             core,
@@ -185,6 +207,9 @@ impl Core {
         self.capture.shutdown().await;
         self.processing.shutdown().await;
         self.library.shutdown().await;
+        self.chat.shutdown().await;
+        self.recipes.shutdown().await;
+        self.people.shutdown().await;
         self.node.shutdown().await;
     }
 }

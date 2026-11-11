@@ -25,6 +25,8 @@ impl ArtifactKind {
     pub const VERDICTS: &'static str = "verdicts";
     pub const ACTION_PROPOSALS: &'static str = "action_proposals";
     pub const ACTION_RESULT: &'static str = "action_result";
+    pub const RECIPE_OUTPUT: &'static str = "recipe_output";
+    pub const SPEAKER_LABELS: &'static str = "speaker_labels";
 
     pub fn new(s: &str) -> Self {
         ArtifactKind(s.to_string())
@@ -333,6 +335,60 @@ pub mod body {
         /// Verifiers that failed; the others' verdicts still stand.
         #[serde(default)]
         pub errors: Vec<VerifierError>,
+    }
+
+    /// Output of running a recipe on a meeting (`recipe.llm`). One artifact per run; a rerun of
+    /// the same recipe supersedes the previous output.
+    #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+    #[ts(export)]
+    pub struct RecipeOutput {
+        pub recipe_id: String,
+        /// Recipe name at run time (recipes can be renamed or deleted later).
+        pub recipe_name: String,
+        /// Markdown answer. `[n]` markers refer to `citations[n - 1]`.
+        pub markdown: String,
+        #[serde(default)]
+        pub citations: Vec<SpanRef>,
+    }
+    impl ArtifactBody for RecipeOutput {
+        const KIND: &'static str = ArtifactKind::RECIPE_OUTPUT;
+        const SCHEMA: u32 = 1;
+    }
+
+    /// Who each speaker of a transcript is. The latest non-superseded `speaker_labels` artifact
+    /// of a meeting wins; labelling again supersedes it.
+    #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+    #[ts(export)]
+    pub struct SpeakerLabels {
+        /// The transcript artifact whose `Segment::speaker` values are labelled.
+        pub transcript: Id,
+        pub labels: Vec<SpeakerLabel>,
+    }
+    impl ArtifactBody for SpeakerLabels {
+        const KIND: &'static str = ArtifactKind::SPEAKER_LABELS;
+        const SCHEMA: u32 = 1;
+    }
+
+    #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+    #[ts(export)]
+    pub struct SpeakerLabel {
+        pub speaker: SpeakerId,
+        /// `people::Person::id`.
+        pub person: Id,
+        /// `user` = confirmed by the user; `voice` / `calendar` = suggested automatically.
+        pub source: LabelSource,
+        /// For suggestions: similarity in [0,1].
+        #[serde(default)]
+        pub confidence: Option<f32>,
+    }
+
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+    #[serde(rename_all = "snake_case")]
+    #[ts(export)]
+    pub enum LabelSource {
+        User,
+        Voice,
+        Calendar,
     }
 
     #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]

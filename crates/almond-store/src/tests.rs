@@ -494,3 +494,41 @@ fn own_events_coming_back_bump_next_seq() {
         .unwrap();
     assert_eq!(e.seq, 3);
 }
+
+#[test]
+fn records_are_lww_with_tombstones_in_any_arrival_order() {
+    use serde_json::json;
+    let up = |v: i64| EventBody::RecordUpsert {
+        collection: "person".into(),
+        id: "p1".into(),
+        body: json!({ "name": format!("v{v}") }),
+    };
+    let del = EventBody::RecordDelete {
+        collection: "person".into(),
+        id: "p1".into(),
+    };
+    let evs = [
+        ev("a", 1, 100, up(1)),
+        ev("b", 1, 200, up(2)),
+        ev("a", 2, 300, del),
+        ev("b", 2, 400, up(4)),
+    ];
+    // newest write is the upsert at 400, whatever the order events arrive in
+    for order in [[0, 1, 2, 3], [3, 2, 1, 0], [2, 0, 3, 1]] {
+        let s = store("c");
+        for i in order {
+            s.apply_remote(vec![evs[i].clone()]).unwrap();
+        }
+        let r = s.get_record("person", "p1").unwrap().unwrap();
+        assert_eq!(r.body["name"], "v4");
+        assert_eq!(r.device, dev("b"));
+        assert_eq!(s.list_records("person").unwrap().len(), 1);
+        assert!(s.list_records("recipe").unwrap().is_empty());
+    }
+    // a newer delete wins over older upserts
+    let s = store("d");
+    s.apply_remote(vec![evs[0].clone(), evs[2].clone(), evs[1].clone()])
+        .unwrap();
+    assert!(s.get_record("person", "p1").unwrap().is_none());
+    assert!(s.list_records("person").unwrap().is_empty());
+}

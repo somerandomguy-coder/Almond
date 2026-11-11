@@ -128,6 +128,19 @@ const MIGRATIONS: &[&str] = &[
         tokenize = 'unicode61 remove_diacritics 2'
     );
     "#,
+    // 2: generic synced records (people, recipes, chat threads, ...), LWW per (collection, id)
+    r#"
+    CREATE TABLE records (
+        collection  TEXT    NOT NULL,
+        id          TEXT    NOT NULL,
+        body        TEXT,
+        deleted     INTEGER NOT NULL DEFAULT 0,
+        hlc_wall    INTEGER NOT NULL,
+        hlc_logical INTEGER NOT NULL,
+        device      TEXT    NOT NULL,
+        PRIMARY KEY (collection, id)
+    );
+    "#,
 ];
 
 pub const SCHEMA_VERSION: u32 = MIGRATIONS.len() as u32;

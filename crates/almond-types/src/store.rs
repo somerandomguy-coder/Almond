@@ -52,6 +52,18 @@ pub struct BlobInfo {
     pub holders: Vec<DeviceId>,
 }
 
+/// A synced record (see `EventBody::RecordUpsert`): the latest upsert of `(collection, id)`.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub struct Record {
+    pub collection: String,
+    pub id: String,
+    pub body: serde_json::Value,
+    /// When and where the winning write happened.
+    pub hlc: crate::time::Hlc,
+    pub device: DeviceId,
+}
+
 /// A job with every claim and outcome seen for it (several after offline races).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
 #[ts(export)]
@@ -65,7 +77,7 @@ pub struct JobRecord {
 }
 
 /// Semantics every `Store` implements (the SQLite store is the reference):
-/// - `meeting.delete` / `calendar.delete` are last-writer-wins tombstones ordered by
+/// - `meeting.delete` / `calendar.delete` / `record.delete` are last-writer-wins tombstones ordered by
 ///   `(hlc, device)`: an older upsert arriving later does not resurrect the record.
 /// - Job status is derived at read time by [`JobStatus::derive`]: any `Done` outcome wins, else the
 ///   latest outcome by `(hlc, device)`, else `Claimed` while an unexpired claim exists (winning
@@ -102,6 +114,10 @@ pub trait Store: Send + Sync {
     fn job_records(&self, status: Option<JobStatus>) -> crate::Result<Vec<JobRecord>>;
     /// Blobs announced by any device (`blob.available`), for lazy blob sync.
     fn known_blobs(&self) -> crate::Result<Vec<BlobInfo>>;
+    /// A live (not deleted) record.
+    fn get_record(&self, collection: &str, id: &str) -> crate::Result<Option<Record>>;
+    /// Live records of a collection, by id.
+    fn list_records(&self, collection: &str) -> crate::Result<Vec<Record>>;
     fn search(&self, text: &str, limit: u32) -> crate::Result<Vec<SearchHit>>;
 
     // ---- local-only key/value (never synced: cursors, settings) ----

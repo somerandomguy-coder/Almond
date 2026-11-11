@@ -37,6 +37,8 @@ struct MemState {
     calendar: BTreeMap<(String, String), CalendarEvent>,
     jobs: BTreeMap<Id, MemJob>,
     blobs: BTreeMap<String, crate::store::BlobInfo>,
+    /// (collection, id) → (body or None = deleted, hlc, device); LWW.
+    records: BTreeMap<(String, String), (Option<serde_json::Value>, crate::time::Hlc, DeviceId)>,
     kv: HashMap<String, String>,
     next_seq: u64,
 }
@@ -78,11 +80,36 @@ impl MemStore {
         }
     }
 
+    fn record_lww(
+        st: &mut MemState,
+        ev: &Event,
+        collection: String,
+        id: String,
+        body: Option<serde_json::Value>,
+    ) {
+        let key = (collection, id);
+        let newer = match st.records.get(&key) {
+            Some((_, h, d)) => (ev.hlc, &ev.device) > (*h, d),
+            None => true,
+        };
+        if newer {
+            st.records.insert(key, (body, ev.hlc, ev.device.clone()));
+        }
+    }
+
     fn materialize(st: &mut MemState, ev: &Event) -> Result<()> {
         let Some(body) = EventBody::decode(ev)? else {
             return Ok(());
         };
         match body {
+            EventBody::RecordUpsert {
+                collection,
+                id,
+                body,
+            } => Self::record_lww(st, ev, collection, id, Some(body)),
+            EventBody::RecordDelete { collection, id } => {
+                Self::record_lww(st, ev, collection, id, None)
+            }
             EventBody::MeetingUpsert(m) => {
                 let newer = match st.meetings.get(&m.id) {
                     Some((_, h, d)) => (ev.hlc, &ev.device) > (*h, d),
@@ -303,6 +330,40 @@ impl Store for MemStore {
 
     fn known_blobs(&self) -> Result<Vec<crate::store::BlobInfo>> {
         Ok(self.st.lock().unwrap().blobs.values().cloned().collect())
+    }
+
+    fn get_record(&self, collection: &str, id: &str) -> Result<Option<crate::store::Record>> {
+        let st = self.st.lock().unwrap();
+        Ok(st
+            .records
+            .get(&(collection.to_string(), id.to_string()))
+            .and_then(|(b, h, d)| {
+                b.clone().map(|body| crate::store::Record {
+                    collection: collection.into(),
+                    id: id.into(),
+                    body,
+                    hlc: *h,
+                    device: d.clone(),
+                })
+            }))
+    }
+
+    fn list_records(&self, collection: &str) -> Result<Vec<crate::store::Record>> {
+        let st = self.st.lock().unwrap();
+        Ok(st
+            .records
+            .iter()
+            .filter(|((c, _), _)| c == collection)
+            .filter_map(|((c, id), (b, h, d))| {
+                b.clone().map(|body| crate::store::Record {
+                    collection: c.clone(),
+                    id: id.clone(),
+                    body,
+                    hlc: *h,
+                    device: d.clone(),
+                })
+            })
+            .collect())
     }
 
     fn search(&self, text: &str, limit: u32) -> Result<Vec<SearchHit>> {
