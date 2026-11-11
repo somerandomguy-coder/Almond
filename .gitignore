@@ -26,3 +26,6 @@ client_secret*.json
 .claude/worktrees/
 # ...except small synthetic test fixtures
 !crates/*/tests/fixtures/**
+
+# personal recordings and their transcripts: never commit
+/personal_record/
