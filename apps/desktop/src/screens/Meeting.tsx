@@ -19,10 +19,11 @@ import { CitationContext, type CitationCtx } from "../components/citationContext
 import { ActionsPanel, AudioBar, EnhancedNotesView, JobsList } from "../components/meeting/parts";
 import { ActionItemsView, SummaryView } from "../components/meeting/SummaryView";
 import { NotesEditor } from "../components/NotesEditor";
+import { AskAlmond } from "../components/chat/AskAlmond";
 import { TranscriptPanel, type TranscriptLine } from "../components/TranscriptPanel";
 import { Button, cx, ErrorNote, Icon, Loading, Spinner } from "../components/ui";
 
-type Tab = "notes" | "summary" | "actions" | "transcript";
+type Tab = "notes" | "summary" | "ask" | "actions" | "transcript";
 
 function VuMeter({ levels }: { levels: [string, number][] }) {
   return (
@@ -241,6 +242,7 @@ function MeetingView({ detail }: { detail: MeetingDetail }) {
   const tabs: { id: Tab; label: string; mobileOnly?: boolean }[] = [
     { id: "notes", label: t("meeting.tabs.notes") },
     { id: "summary", label: t("meeting.tabs.summary") },
+    { id: "ask", label: t("chat.tab") },
     { id: "actions", label: t("meeting.tabs.actions") },
     { id: "transcript", label: t("meeting.tabs.transcript"), mobileOnly: true },
   ];
@@ -362,6 +364,15 @@ function MeetingView({ detail }: { detail: MeetingDetail }) {
                   <SummaryView artifacts={artifacts} meetingId={id} devices={devices} transcriptId={transcriptArt?.id ?? null} />
                   <ActionItemsView artifacts={artifacts} />
                 </>
+              )}
+              {leftTab === "ask" && (
+                <AskAlmond
+                  scope={{ type: "meeting", meeting_id: id }}
+                  title={t("chat.meetingTitle")}
+                  placeholder={t("chat.meetingPlaceholder")}
+                  suggestions={[t("chat.suggestions.summary"), t("chat.suggestions.actions"), t("chat.suggestions.unclear")]}
+                  onOpenSource={(s) => (s.meeting_id === id && s.span ? (jump(s.span), true) : false)}
+                />
               )}
               {leftTab === "actions" && (
                 <>

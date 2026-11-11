@@ -4,6 +4,9 @@
 import type { Artifact } from "../../gen/Artifact";
 import type { CalendarEvent } from "../../gen/CalendarEvent";
 import type { CalendarSourceInfo } from "../../gen/CalendarSourceInfo";
+import type { ChatScope } from "../../gen/ChatScope";
+import type { ChatSource } from "../../gen/ChatSource";
+import type { ChatThread } from "../../gen/ChatThread";
 import type { Job } from "../../gen/Job";
 import type { JobProgress } from "../../gen/JobProgress";
 import type { Meeting } from "../../gen/Meeting";
@@ -61,6 +64,11 @@ export class MockApi implements AlmondApi {
   private recTimer: ReturnType<typeof setInterval> | null = null;
   private liveSegments: Segment[] = [];
   private importCancels = new Set<string>();
+  // ---- chat ("Ask Almond") ----
+  chats = new Map<string, ChatThread>();
+  private chatCancels = new Set<string>();
+  /** Tests: make `chat.ask` fail as it does when Ollama isn't running. */
+  llmDown = false;
   /** What the mock "file picker" returns (`null` = the user closed it). Tests may change it. */
   pickedFile: string | null = "C:\\Users\\me\\Recordings\\Phỏng vấn khách hàng.m4a";
 
@@ -313,6 +321,66 @@ export class MockApi implements AlmondApi {
   }
 
   // ---- method table --------------------------------------------------------------------------
+
+  // ---- chat ("Ask Almond") -------------------------------------------------------------------
+
+  /** A canned, cited answer: upcoming events for "today / next" questions, else transcript lines
+   * matching the question's words, else the meeting's summary. */
+  private chatAnswer(scope: ChatScope, q: string, lang: "vi" | "en"): { text: string; sources: ChatSource[] } {
+    const vi = lang === "vi";
+    const fq = fold(q).toLowerCase();
+    const sources: ChatSource[] = [];
+    const add = (s: Omit<ChatSource, "n">) => {
+      sources.push({ ...s, n: sources.length + 1 });
+      return sources.length;
+    };
+    const now = Date.now();
+    const clock = (ms: number) => new Date(ms).toLocaleTimeString(vi ? "vi-VN" : "en-GB", { hour: "2-digit", minute: "2-digit" });
+    if (scope.type === "all" && /\b(today|next|coming|prep|hom nay|tiep theo|lich|sap toi)\b/.test(fq)) {
+      const evs = this.events.filter((e) => e.end > now && e.start < now + 24 * fx.HOUR).sort((a, b) => a.start - b.start);
+      if (!evs.length) return { text: vi ? "Hôm nay bạn không có lịch nào." : "Nothing on your calendar today.", sources };
+      const lines = evs.map((e) => {
+        const linked = this.meetings.find((m) => m.calendar_event?.event_id === e.event_id)?.id ?? null;
+        const n = add({ kind: "calendar_event", label: `${e.title} · ${clock(e.start)}`, meeting_id: linked, span: null, event: { source: e.source, event_id: e.event_id } });
+        return `- **${clock(e.start)}** ${e.title} [${n}]`;
+      });
+      return { text: `${vi ? `Bạn có ${evs.length} lịch sắp tới:` : `You have ${evs.length} things coming up:`}\n${lines.join("\n")}`, sources };
+    }
+    const stop = new Set(["what", "did", "about", "the", "have", "with", "this", "meeting", "minh", "nao", "cua", "trong", "nhung", "cuoc", "hop"]);
+    const words = fq.split(/[^\p{L}\p{N}]+/u).filter((w) => w.length >= 3 && !stop.has(w));
+    const meetings = scope.type === "meeting" ? this.meetings.filter((m) => m.id === scope.meeting_id) : this.meetings;
+    const lines: string[] = [];
+    for (const m of meetings) {
+      const tr = this.artifactsFor(m.id, "transcript")[0];
+      if (!tr || !words.length) continue;
+      for (const seg of (tr.body as unknown as Transcript).segments) {
+        if (lines.length >= 3) break;
+        if (!words.some((w) => fold(seg.text).toLowerCase().includes(w))) continue;
+        const sec = Math.floor(seg.t0_ms / 1000);
+        const n = add({
+          kind: "transcript",
+          label: `${m.title} · ${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, "0")}`,
+          meeting_id: m.id,
+          span: { artifact: tr.id, segment: seg.idx, chars: null, time_ms: [seg.t0_ms, seg.t1_ms] },
+          event: null,
+        });
+        lines.push(`- ${seg.text} [${n}]`);
+      }
+    }
+    if (lines.length) return { text: `${vi ? "Đây là những gì mình tìm thấy:" : "Here's what I found:"}\n${lines.join("\n")}`, sources };
+    if (scope.type === "meeting") {
+      const sum = this.artifactsFor(scope.meeting_id, "summary")[0];
+      if (sum) {
+        const m = this.meeting(scope.meeting_id);
+        const n = add({ kind: "summary", label: m.title, meeting_id: m.id, span: null, event: null });
+        const bullets = (sum.body as unknown as { sections: SummarySection[] }).sections.flatMap((s) => s.bullets).slice(0, 3);
+        return { text: bullets.map((b) => `- ${b.text} [${n}]`).join("\n"), sources };
+      }
+    }
+    return { text: vi ? "Mình không tìm thấy điều này trong cuộc họp hay ghi chú của bạn." : "I couldn't find that in your meetings or notes.", sources };
+  }
+
+  // ---- handlers ------------------------------------------------------------------------------
 
   private handlers: { [M in Method]: (this: MockApi, p: Params<M>) => Result<M> | Promise<Result<M>> } = {
     "meetings.list": function (q) {
@@ -730,6 +798,54 @@ export class MockApi implements AlmondApi {
     },
     "models.slots": function () {
       return ((this.settings.get("models.slots") as unknown as ModelSlot[]) ?? []).map((s) => ({ ...s }));
+    },
+    "chat.ask": async function ({ thread_id, scope, message, lang }) {
+      const q = message.trim();
+      if (!q) throw new ApiError(-32602, "message is empty");
+      if (this.llmDown)
+        throw new ApiError(-32603, "network: Ollama isn't running at http://127.0.0.1:11434, so Ask Almond can't answer. Start Ollama (or set a remote Ollama in Settings) and try again.");
+      const now = Date.now();
+      const id = thread_id ?? ulid();
+      const th: ChatThread = this.chats.get(id) ?? { id, title: "", scope: scope ?? { type: "all" }, messages: [], created_at: now, updated_at: now };
+      const answerLang = lang ?? (/[À-ỹ]/.test(q) || this.settings.get("ui.language") === "vi" ? "vi" : "en");
+      const { text, sources } = this.chatAnswer(th.scope, q, answerLang);
+      const entry_id = ulid();
+      let out = "";
+      for (const piece of text.split(/(?<= )/)) {
+        if (this.chatCancels.has(id)) break;
+        await this.sleep(50);
+        out += piece;
+        this.emit("chat.delta", { thread_id: id, entry_id, text: piece });
+      }
+      this.chatCancels.delete(id);
+      const cited = new Set([...out.matchAll(/\[(\d+)\]/g)].map((m) => Number(m[1])));
+      const entry = { id: entry_id, role: "assistant" as const, text: out.trim(), sources: sources.filter((s) => cited.has(s.n)), model: "ollama:gemma4:12b", at: Date.now() };
+      th.messages.push({ id: ulid(), role: "user", text: q, sources: [], model: null, at: now }, entry);
+      th.title ||= q.length > 60 ? `${q.slice(0, 59)}…` : q;
+      th.updated_at = entry.at;
+      this.chats.set(id, th);
+      return { thread_id: id, entry };
+    },
+    "chat.threads": function ({ scope, limit }) {
+      const key = scope ? JSON.stringify(scope) : null;
+      return [...this.chats.values()]
+        .filter((t) => !key || JSON.stringify(t.scope) === key)
+        .sort((a, b) => b.updated_at - a.updated_at)
+        .slice(0, limit ?? undefined)
+        .map((t) => structuredClone(t));
+    },
+    "chat.get": function ({ thread_id }) {
+      const t = this.chats.get(thread_id);
+      if (!t) throw new ApiError(-32004, `chat ${thread_id} not found`);
+      return structuredClone(t);
+    },
+    "chat.delete": function ({ thread_id }) {
+      if (!this.chats.delete(thread_id)) throw new ApiError(-32004, `chat ${thread_id} not found`);
+      return null;
+    },
+    "chat.cancel": function ({ thread_id }) {
+      this.chatCancels.add(thread_id);
+      return true;
     },
     "settings.get": function ({ key }) {
       return this.settings.get(key) ?? null;
