@@ -361,6 +361,9 @@ fn channels_for(core: &Core, p: &StartRecordingParams) -> Vec<AudioChannel> {
     v
 }
 
+/// Setting: language of live captions (`"vi"` | `"en"`), see `start`.
+pub(crate) const CAPTIONS_LANGUAGE: &str = "captions.language";
+
 pub(crate) async fn start(
     core: &Arc<Core>,
     mut p: StartRecordingParams,
@@ -424,10 +427,14 @@ pub(crate) async fn start(
 
     // Live captions, one stream per channel.
     let (feeds, live_tasks) = if p.live_transcript {
-        let lang = meeting
-            .languages
-            .first()
-            .cloned()
+        // Setting `captions.language` ("vi" | "en") wins; else the meeting's language.
+        let lang = core
+            .setting_as::<String>(CAPTIONS_LANGUAGE)
+            .ok()
+            .flatten()
+            .filter(|l| !l.trim().is_empty())
+            .map(|l| almond_types::LangTag(l.trim().to_string()))
+            .or_else(|| meeting.languages.first().cloned())
             .unwrap_or_else(super::engines::default_language);
         live::spawn(core, &meeting.id, offset_ms, &channels, lang)
     } else {

@@ -9,8 +9,14 @@ The laptop (Intel iGPU, CPU only) runs the whole app and does what it can locall
 sudo dnf install webkit2gtk4.1-devel gtk3-devel libsoup3-devel javascriptcoregtk4.1-devel \
   opus-devel libappindicator-gtk3-devel librsvg2-devel clang-devel
 pnpm -C apps/desktop install
-scripts/dev-linux.sh            # tauri dev with --features whisper,sherpa (CPU engines)
+scripts/run-linux.sh            # everyday use: release build (UI embedded) + start
+scripts/dev-linux.sh            # editing the app: debug build + Vite dev server (slower)
 ```
+
+Live caption language: Settings → General → "Live caption language" (setting `captions.language`).
+On a CPU-only device live captions don't detect the language; English uses
+`sherpa:zipformer-en-small-int8` (install: `cargo run --release -p almond-stt --example models --
+get sherpa:zipformer-en-small-int8`, 112 MB), measured 0.3 s median until words show.
 
 Release binary (UI embedded): `pnpm -C apps/desktop tauri build --no-bundle --features whisper,sherpa`
 → `target/release/almond-desktop`. **Not** plain `cargo build`: without Tauri's `custom-protocol`

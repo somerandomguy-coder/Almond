@@ -32,6 +32,18 @@ function General() {
   const { t, i18n } = useTranslation();
   const api = useApi();
   const { theme, setTheme } = useAppState();
+  // Setting `captions.language`: language of live captions (unset = the meeting's language).
+  const [captions, setCaptions] = useState("");
+  useEffect(() => {
+    void api
+      .call("settings.get", { key: "captions.language" })
+      .then((v) => setCaptions(typeof v === "string" ? v : ""))
+      .catch(() => {});
+  }, [api]);
+  const changeCaptions = (v: string) => {
+    setCaptions(v);
+    void api.call("settings.set", { key: "captions.language", value: v || null }).catch(() => {});
+  };
   const changeLang = (l: UiLang) => {
     void setLanguage(l);
     void api.call("settings.set", { key: "ui.language", value: l }).catch(() => {});
@@ -47,6 +59,13 @@ function General() {
                 {l.label}
               </option>
             ))}
+          </select>
+        </Row>
+        <Row label={t("settings.captionsLang")} hint={t("settings.captionsLangHint")} htmlFor="set-captions">
+          <select id="set-captions" className={selectCls} value={captions} onChange={(e) => changeCaptions(e.target.value)}>
+            <option value="">{t("settings.captionsAuto")}</option>
+            <option value="en">English</option>
+            <option value="vi">Tiếng Việt</option>
           </select>
         </Row>
         <Row label={t("settings.theme")} htmlFor="set-theme">

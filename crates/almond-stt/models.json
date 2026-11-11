@@ -147,6 +147,28 @@
       "notes": "30M-param offline Zipformer transducer, int8 (~26 MB). Phone-sized."
     },
     {
+      "id": "sherpa:zipformer-en-small-int8",
+      "engine": "sherpa-transducer",
+      "role": "stt",
+      "languages": ["en"],
+      "streaming": false,
+      "source": {
+        "kind": "tar_bz2",
+        "url": "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-zipformer-small-en-2023-06-26.tar.bz2",
+        "sha256": "c8bff1091c26c49731cddbcd60ef18061142ea11523df1b73bf1b14451b9c15e",
+        "size": 112232184,
+        "convert": null
+      },
+      "files": {
+        "encoder": "encoder-epoch-99-avg-1.int8.onnx",
+        "decoder": "decoder-epoch-99-avg-1.onnx",
+        "joiner": "joiner-epoch-99-avg-1.int8.onnx",
+        "tokens": "tokens.txt"
+      },
+      "license": "Apache-2.0",
+      "notes": "Small offline English Zipformer transducer (LibriSpeech), int8. Live English captions on CPU-only devices, where whisper is slower than real time."
+    },
+    {
       "id": "sherpa:pyannote-seg-3.0",
       "engine": "sherpa-pyannote",
       "role": "segmentation",

@@ -62,12 +62,14 @@ impl RoutingTable {
             ),
             // Whisper large-class models run slower than real time on CPU: Vietnamese goes to
             // Zipformer, English to whisper-small (or is offloaded to the PC).
+            // Live English: the small English Zipformer (whisper-small is RTF ~2 on a 4-core
+            // laptop CPU, too slow for captions); offline English stays whisper-small.
             DeviceClass::DesktopCpu => (
                 r(
                     "sherpa:zipformer-vi-30m-int8",
                     "sherpa:zipformer-vi-30m-int8",
                 ),
-                r("whisper:small", "whisper:small"),
+                r("whisper:small", "sherpa:zipformer-en-small-int8"),
                 r("whisper:small", "whisper:small"),
             ),
             DeviceClass::Mobile => (
