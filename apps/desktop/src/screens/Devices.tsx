@@ -61,6 +61,18 @@ function PairingCode({ onPaired }: { onPaired: () => void }) {
     }
   };
 
+  const [copied, setCopied] = useState(false);
+  const copy = () => {
+    if (!res) return;
+    void navigator.clipboard
+      ?.writeText(res.qr_payload)
+      .then(() => {
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
+      })
+      .catch(() => {}); // the text box below stays selectable
+  };
+
   const left = res ? res.expires_at - now : 0;
   return (
     <Card className="flex flex-col gap-3">
@@ -72,18 +84,30 @@ function PairingCode({ onPaired }: { onPaired: () => void }) {
           {res && left <= 0 && <span className="text-sm text-muted">{t("devices.expired")}</span>}
         </div>
       ) : (
-        <div className="flex flex-col items-center gap-3 sm:flex-row sm:items-start">
-          {qr ? <img src={qr} alt="QR" width={180} height={180} className="rounded-xl border border-line bg-white p-1" /> : <code className="max-w-full break-all text-xs">{res.qr_payload}</code>}
-          <div className="flex flex-col gap-2">
-            <ol className="grid grid-cols-3 gap-1.5" aria-label="pairing words">
-              {res.words.map((w, i) => (
-                <li key={i} className="rounded-lg bg-sunken px-2 py-1 text-center font-mono text-sm">
-                  <span className="mr-1 text-faint">{i + 1}</span>
-                  {w}
-                </li>
-              ))}
-            </ol>
-            <p className="text-xs text-muted">{t("devices.expiresIn", { time: formatClock(left) })}</p>
+        <div className="flex flex-col items-center gap-4">
+          {qr ? <img src={qr} alt="QR" width={180} height={180} className="rounded-xl border border-line bg-white p-1" /> : null}
+          <ol className="grid w-full max-w-md grid-cols-[repeat(auto-fill,minmax(7.5rem,1fr))] gap-2" aria-label="pairing words">
+            {res.words.map((w, i) => (
+              <li key={i} className="flex items-baseline gap-2 whitespace-nowrap rounded-lg bg-sunken px-3 py-2 font-mono text-base">
+                <span className="w-4 shrink-0 text-right text-xs text-faint">{i + 1}</span>
+                <span>{w}</span>
+              </li>
+            ))}
+          </ol>
+          <div className="flex w-full max-w-md flex-col gap-2">
+            <p className="text-xs text-muted">{t("devices.copyHint")}</p>
+            <div className="flex flex-wrap items-center gap-2">
+              <Button onClick={copy}>{copied ? t("devices.copied") : t("devices.copyCode")}</Button>
+              <span className="text-xs text-muted">{t("devices.expiresIn", { time: formatClock(left) })}</span>
+            </div>
+            <textarea
+              readOnly
+              value={res.qr_payload}
+              rows={3}
+              aria-label={t("devices.copyCode")}
+              onFocus={(e) => e.currentTarget.select()}
+              className="w-full resize-none break-all rounded-xl border border-line bg-surface px-3 py-2 font-mono text-xs text-muted outline-none focus:border-accent"
+            />
           </div>
         </div>
       )}
@@ -101,12 +125,17 @@ function EnterCode({ onPaired }: { onPaired: (p: PeerInfo) => void }) {
 
   const submit = async (e: FormEvent) => {
     e.preventDefault();
+    // A pasted pairing code (works across networks such as Tailscale: it carries addresses) or
+    // the six words (found on the LAN through mDNS).
+    const pasted = text.replace(/\s+/g, "");
+    // One long token (e.g. "ALMOND1:…"), not six short words.
+    const isCode = pasted.length > 40 && pasted.includes(":");
     const words = text.trim().toLowerCase().split(/[\s,-]+/).filter(Boolean);
-    if (words.length !== 6) return setMsg({ ok: false, text: t("errors.invalidWords") });
+    if (!isCode && words.length !== 6) return setMsg({ ok: false, text: t("errors.invalidWords") });
     setBusy(true);
     setMsg(null);
     try {
-      const p = await api.call("sync.pairAccept", { words });
+      const p = await api.call("sync.pairAccept", isCode ? { qr_payload: pasted } : { words });
       setMsg({ ok: true, text: t("devices.paired", { name: p.device.name }) });
       setText("");
       onPaired(p);
