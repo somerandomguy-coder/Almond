@@ -532,3 +532,106 @@ fn records_are_lww_with_tombstones_in_any_arrival_order() {
     assert!(s.get_record("person", "p1").unwrap().is_none());
     assert!(s.list_records("person").unwrap().is_empty());
 }
+
+#[test]
+fn damaged_database_is_backed_up_and_salvaged() {
+    use crate::recover::{LAST_RECOVERY_KEY, open_or_recover};
+    let dir = std::env::temp_dir().join(format!(
+        "almond-recover-{}-{}",
+        std::process::id(),
+        now_ms()
+    ));
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = dir.join("almond.db");
+    let me = dev("me");
+    let n_meetings = 40;
+    {
+        let s = SqliteStore::open(&path, me.clone()).unwrap();
+        for i in 0..n_meetings {
+            let mut m = fixtures::meeting(1_000 + i);
+            m.title = format!("meeting {i} {}", "x".repeat(300));
+            s.append_local(EventBody::MeetingUpsert(m.clone())).unwrap();
+            s.append_local(EventBody::ArtifactAdd(fixtures::transcript(&m.id, &me)))
+                .unwrap();
+        }
+        s.with_conn(|c| {
+            c.execute_batch("PRAGMA wal_checkpoint(TRUNCATE);")
+                .map_err(crate::sqlite::sqlerr)
+        })
+        .unwrap();
+    }
+    // Healthy: opens without recovery.
+    {
+        let (_s, r) = open_or_recover(&path, me.clone()).unwrap();
+        assert!(r.is_none());
+    }
+    // Damage some pages in the middle of the file (not the header page).
+    let mut bytes = std::fs::read(&path).unwrap();
+    let page = 4096;
+    let pages = bytes.len() / page;
+    assert!(pages > 8, "test db too small: {pages} pages");
+    for p in [pages / 3, pages / 2, pages * 2 / 3] {
+        for b in &mut bytes[p * page..(p + 1) * page] {
+            *b = 0xA5;
+        }
+    }
+    std::fs::write(&path, &bytes).unwrap();
+
+    let (s, report) = open_or_recover(&path, me.clone()).unwrap();
+    let report = report.expect("damage must be detected");
+    assert!(
+        report.backup_dir.join("almond.db").exists(),
+        "damaged file kept"
+    );
+    assert!(report.events_recovered > 0);
+    s.quick_check().unwrap();
+    // Most data survives; nothing reads as garbage.
+    let meetings = s.list_meetings(&MeetingQuery::default()).unwrap();
+    assert!(
+        meetings.len() >= n_meetings as usize / 2,
+        "only {} of {n_meetings} meetings recovered ({report:?})",
+        meetings.len()
+    );
+    // The next own event continues after every seq ever used (never reuses a lost one).
+    let ev = s
+        .append_local(EventBody::MeetingUpsert(fixtures::meeting(9_999)))
+        .unwrap();
+    assert_eq!(ev.seq, 2 * n_meetings as u64 + 1);
+    assert!(s.kv_get(LAST_RECOVERY_KEY).unwrap().is_some());
+    drop(s);
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// Run recovery on a copy of a real damaged database:
+/// `ALMOND_RECOVER_SAMPLE=<dir with almond.db[-wal]> cargo test -p almond-store real_damaged -- --ignored --nocapture`
+#[test]
+#[ignore]
+fn real_damaged_database() {
+    use crate::recover::open_or_recover;
+    let Ok(src) = std::env::var("ALMOND_RECOVER_SAMPLE") else {
+        return;
+    };
+    let dir = std::env::temp_dir().join(format!("almond-recover-real-{}", now_ms()));
+    std::fs::create_dir_all(&dir).unwrap();
+    for f in ["almond.db", "almond.db-wal", "almond.db-shm"] {
+        let p = std::path::Path::new(&src).join(f);
+        if p.exists() {
+            std::fs::copy(&p, dir.join(f)).unwrap();
+        }
+    }
+    // The real DB belongs to whichever device wrote it; read its id from meta via a raw open.
+    let owner: String = rusqlite::Connection::open(dir.join("almond.db"))
+        .unwrap()
+        .query_row("SELECT value FROM meta WHERE key='device'", [], |r| {
+            r.get(0)
+        })
+        .unwrap();
+    let (s, report) = open_or_recover(dir.join("almond.db"), DeviceId(owner)).unwrap();
+    println!("{report:#?}");
+    let meetings = s.list_meetings(&MeetingQuery::default()).unwrap();
+    println!("meetings: {}", meetings.len());
+    for m in &meetings {
+        let arts = s.list_artifacts(&m.id, None).unwrap();
+        println!("  {} artifacts", arts.len());
+    }
+}

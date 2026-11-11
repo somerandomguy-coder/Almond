@@ -106,6 +106,17 @@ impl SqliteStore {
                 |r| r.get(0),
             )
             .sql()?;
+        // After a recovery (see `recover`), lost own events must never have their seqs reused:
+        // peers that saw them would ignore the new events.
+        let floor: Option<String> = conn
+            .query_row(
+                "SELECT value FROM meta WHERE key = 'min_next_seq'",
+                [],
+                |r| r.get(0),
+            )
+            .optional()
+            .sql()?;
+        let floor = floor.and_then(|f| f.parse::<u64>().ok()).unwrap_or(1);
         let clock = HlcClock::new();
         let max_hlc: Option<(i64, i64)> = conn
             .query_row(
@@ -126,9 +137,23 @@ impl SqliteStore {
             clock,
             inner: Mutex::new(Inner {
                 conn,
-                next_seq: max_seq.unwrap_or(0) as u64 + 1,
+                next_seq: (max_seq.unwrap_or(0) as u64 + 1).max(floor),
             }),
         })
+    }
+
+    /// `PRAGMA quick_check`: Err if the database file is damaged.
+    pub fn quick_check(&self) -> Result<()> {
+        let g = self.lock();
+        let r: String = g
+            .conn
+            .query_row("PRAGMA quick_check(1)", [], |r| r.get(0))
+            .sql()?;
+        if r == "ok" {
+            Ok(())
+        } else {
+            Err(Error::Other(format!("database is damaged: {r}")))
+        }
     }
 
     fn lock(&self) -> std::sync::MutexGuard<'_, Inner> {

@@ -24,12 +24,14 @@
 pub mod blobs;
 pub mod fts;
 pub mod notes;
+pub mod recover;
 pub mod schema;
 pub mod sqlite;
 
 pub use almond_types as types;
 pub use blobs::FsBlobStore;
 pub use notes::{doc_text, export_since, notes_update_event, validate_update};
+pub use recover::{LAST_RECOVERY_KEY, RecoveryReport, open_or_recover};
 pub use sqlite::{BlobInfo, SqliteStore};
 
 #[cfg(test)]

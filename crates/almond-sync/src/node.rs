@@ -71,10 +71,11 @@ impl SyncNode {
             capabilities: cfg.capabilities.clone(),
             last_active: None,
         };
-        let store = Arc::new(SqliteStore::open(
-            cfg.data_dir.join("almond.db"),
-            device.id.clone(),
-        )?);
+        // A damaged database (power loss, full disk) is backed up and salvaged instead of
+        // failing start-up; the report is kept under kv `store.last_recovery`.
+        let (store, _recovery) =
+            almond_store::open_or_recover(cfg.data_dir.join("almond.db"), device.id.clone())?;
+        let store = Arc::new(store);
         let blobs = Arc::new(FsBlobStore::open(cfg.data_dir.join("blobs"))?);
 
         // announce (changes to) this device to the vault

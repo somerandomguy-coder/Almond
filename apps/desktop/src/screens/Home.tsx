@@ -4,6 +4,7 @@ import { Link, useNavigate } from "react-router";
 import type { Meeting } from "../gen/Meeting";
 import type { SearchHit } from "../gen/SearchHit";
 import type { UpcomingEvent } from "../gen/UpcomingEvent";
+import type { StoreRecovery } from "../api/types";
 import { useApi, useLoad, useNotification } from "../api/context";
 import { errorMessage } from "../api/errors";
 import { useFormat } from "../lib/format";
@@ -13,10 +14,6 @@ import { startNotes } from "../lib/startNotes";
 import type { ImportProgress } from "../api/types";
 import { useAppState } from "../state/AppState";
 import { Button, Card, ErrorNote, Highlighted, Icon, Loading, Pill, SectionTitle } from "../components/ui";
-import { AskAlmond } from "../components/chat/AskAlmond";
-import type { ChatScope } from "../gen/ChatScope";
-
-const HOME_SCOPE: ChatScope = { type: "all" };
 
 function UploadIcon(p: SVGProps<SVGSVGElement>) {
   return (
@@ -347,6 +344,30 @@ function ImportCard({ s, onCancel, onDismiss }: { s: ImportState; onCancel: () =
   );
 }
 
+/** One-time notice after Almond repaired a damaged database at start-up. */
+function RecoveryNotice() {
+  const { t } = useTranslation();
+  const api = useApi();
+  const [r, setR] = useState<StoreRecovery | null>(null);
+  useEffect(() => {
+    api.call("store.recovery", {}).then(setR).catch(() => setR(null));
+  }, [api]);
+  if (!r) return null;
+  const dismiss = () => {
+    setR(null);
+    void api.call("store.dismissRecovery", {}).catch(() => {});
+  };
+  return (
+    <div role="status" className="rounded-2xl border border-line bg-surface p-4 text-sm">
+      <p className="font-medium">{t("home.recovered.title")}</p>
+      <p className="mt-1 text-muted">{t("home.recovered.body", { kept: r.events_recovered, lost: r.events_lost, dir: r.backup_dir })}</p>
+      <Button size="sm" variant="secondary" className="mt-3" onClick={dismiss}>
+        {t("home.recovered.ok")}
+      </Button>
+    </div>
+  );
+}
+
 export function Home() {
   const { t } = useTranslation();
   const api = useApi();
@@ -399,6 +420,7 @@ export function Home() {
           <div className="rounded-2xl border-2 border-dashed border-accent bg-surface px-8 py-6 text-center font-medium">{t("import.dropHere")}</div>
         </div>
       )}
+      <RecoveryNotice />
       {pickError != null && <ErrorNote error={pickError} />}
       {imp.state && <ImportCard s={imp.state} onCancel={imp.cancel} onDismiss={imp.dismiss} />}
       <SearchBox onResults={onResults} />
@@ -407,12 +429,6 @@ export function Home() {
       ) : (
         <>
           {upcoming.error ? <ErrorNote error={upcoming.error} onRetry={upcoming.reload} /> : upcoming.data ? <Upcoming events={upcoming.data} now={now} /> : <Loading />}
-          <AskAlmond
-            scope={HOME_SCOPE}
-            title={t("chat.title")}
-            placeholder={t("chat.placeholder")}
-            suggestions={[t("chat.suggestions.today"), t("chat.suggestions.decided"), t("chat.suggestions.prep")]}
-          />
           {meetings.error ? <ErrorNote error={meetings.error} onRetry={meetings.reload} /> : meetings.data ? <Recent meetings={meetings.data} onImport={importFile} importing={imp.busy} /> : <Loading />}
         </>
       )}

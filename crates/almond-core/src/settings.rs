@@ -81,6 +81,20 @@ pub struct AppInfo {
 }
 
 pub(crate) fn register(r: &mut Router) {
+    // A repair of a damaged database at start-up (almond_store::open_or_recover), until dismissed.
+    r.add("store.recovery", |core, _: NoParams| async move {
+        ApiResult::Ok(
+            match core.store().kv_get(almond_store::LAST_RECOVERY_KEY)? {
+                Some(s) => serde_json::from_str::<Value>(&s).unwrap_or(Value::Null),
+                None => Value::Null,
+            },
+        )
+    });
+    r.add("store.dismissRecovery", |core, _: NoParams| async move {
+        core.store()
+            .kv_set(almond_store::LAST_RECOVERY_KEY, "null")?;
+        ApiResult::Ok(Value::Null)
+    });
     r.add("settings.get", |core, p: GetParams| async move {
         ApiResult::Ok(core.setting(&p.key)?)
     });

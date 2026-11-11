@@ -130,7 +130,7 @@ const MIGRATIONS: &[&str] = &[
     "#,
     // 2: generic synced records (people, recipes, chat threads, ...), LWW per (collection, id)
     r#"
-    CREATE TABLE records (
+    CREATE TABLE IF NOT EXISTS records (
         collection  TEXT    NOT NULL,
         id          TEXT    NOT NULL,
         body        TEXT,

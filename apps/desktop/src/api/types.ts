@@ -102,6 +102,9 @@ export interface ApiMethods {
   "models.slots": [Record<string, never>, ModelSlot[]];
   "llm.status": [{ refresh?: boolean }, LlmStatus];
   "storage.usage": [Record<string, never>, StorageUsage];
+  /** The start-up repair of a damaged database, if one happened and wasn't dismissed. */
+  "store.recovery": [Record<string, never>, StoreRecovery | null];
+  "store.dismissRecovery": [Record<string, never>, null];
   "settings.get": [{ key: string }, JsonValue];
   "settings.set": [{ key: string; value: JsonValue }, null];
   // ---- chat ("Ask Almond", Rust: almond_core::chat) ----
@@ -134,6 +137,15 @@ export interface ApiMethods {
   "people.unlabelSpeaker": [{ meeting_id: Id; speaker: string }, SpeakerLabels];
   /** Labels the core would suggest now (voice, calendar, "me"); nothing is written. */
   "people.suggestions": [{ meeting_id: Id }, SpeakerLabel[]];
+}
+
+/** `store.recovery` (Rust: `almond_store::RecoveryReport`). */
+export interface StoreRecovery {
+  reason: string;
+  backup_dir: string;
+  events_recovered: number;
+  events_lost: number;
+  tables: Record<string, [number, number]>;
 }
 
 /** `chat.ask` params. `scope` defaults to `{ type: "all" }` for a new thread. */

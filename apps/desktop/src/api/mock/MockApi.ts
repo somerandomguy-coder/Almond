@@ -39,6 +39,8 @@ export interface MockOptions {
   /** Platform to pretend to be ("windows" | "linux" | "android"). */
   platform?: string;
   now?: number;
+  /** Pretend the core repaired a damaged database at start-up. */
+  storeRecovery?: import("../types").StoreRecovery | null;
 }
 
 type Handler = (payload: unknown) => void;
@@ -72,6 +74,8 @@ export class MockApi implements AlmondApi {
   chats = new Map<string, ChatThread>();
   private chatCancels = new Set<string>();
   /** Tests: make `chat.ask` fail as it does when Ollama isn't running. */
+  /** Tests: a start-up database repair to report (`store.recovery`). */
+  storeRecovery: import("../types").StoreRecovery | null = null;
   llmDown = false;
   /** Cookbook (recipes.*): built-ins first, then user recipes. */
   recipes: RecipeInfo[] = builtinRecipes();
@@ -88,6 +92,7 @@ export class MockApi implements AlmondApi {
   constructor(opts: MockOptions = {}) {
     this.speed = opts.speed ?? 1;
     this.plat = opts.platform ?? "windows";
+    this.storeRecovery = opts.storeRecovery ?? null;
     const now = opts.now ?? Date.now();
     const s = fx.seed(now);
     this.meetings = s.meetings;
@@ -863,6 +868,13 @@ export class MockApi implements AlmondApi {
     "chat.cancel": function ({ thread_id }) {
       this.chatCancels.add(thread_id);
       return true;
+    },
+    "store.recovery": function () {
+      return this.storeRecovery;
+    },
+    "store.dismissRecovery": function () {
+      this.storeRecovery = null;
+      return null;
     },
     "settings.get": function ({ key }) {
       return this.settings.get(key) ?? null;
