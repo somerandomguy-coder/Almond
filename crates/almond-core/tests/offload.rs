@@ -25,6 +25,7 @@ async fn open(name: &str, caps: &[&str]) -> (Api, std::path::PathBuf) {
     ));
     let mut cfg = CoreConfig::new(&dir, name);
     cfg.network = false;
+    cfg.detect_gpu = false;
     cfg.capabilities = caps.iter().map(|c| Capability::new(*c)).collect();
     let api = Core::open(cfg).await.expect("open core");
     api.core

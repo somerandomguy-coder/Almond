@@ -117,7 +117,11 @@ pub(crate) async fn detect(core: &Core, st: &State) -> CapsInfo {
         capabilities: core.cfg.capabilities.clone(),
         ..Default::default()
     };
-    info.gpu = detect_gpu(&core.cfg.platform).await;
+    info.gpu = if core.cfg.detect_gpu {
+        detect_gpu(&core.cfg.platform).await
+    } else {
+        None
+    };
     if info.gpu.is_some() {
         info.capabilities.push(Capability::new("gpu"));
     }

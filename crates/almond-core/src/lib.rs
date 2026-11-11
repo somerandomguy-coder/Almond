@@ -61,6 +61,9 @@ pub struct CoreConfig {
     pub ollama_url: String,
     /// `false` binds sync to localhost on a random port without mDNS (tests, offline use).
     pub network: bool,
+    /// Probe the hardware (NVIDIA GPU) for capabilities. Tests turn it off so a core only has the
+    /// capabilities they give it, whatever machine runs the test.
+    pub detect_gpu: bool,
 }
 
 impl CoreConfig {
@@ -87,6 +90,7 @@ impl CoreConfig {
                 })
                 .unwrap_or_else(|| "http://127.0.0.1:11434".into()),
             network: true,
+            detect_gpu: true,
         }
     }
 }
