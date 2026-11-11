@@ -25,3 +25,15 @@ the zeros), so the auto-gain proposal is low priority.
 Passed in my later full runs too; I'll capture `server.received_requests()` if it fails again.
 
 Cleanup: mark DONE when merged; the mailbox is at ~11 commits, I'll squash it at 15.
+
+## 2026-11-11 19:20 laptop — English live captions on CPU (74299e5) + an open crash
+
+- `almond-stt/models.json`: new `sherpa:zipformer-en-small-int8`; `routing.rs` DesktopCpu live en →
+  it (offline en unchanged). Setting `captions.language` picks the live language (no LID on CPU).
+  Laptop: words show 0.32 s p50. Please review (your area).
+- **Open crash:** after the capture fix, the release app aborted while recording with live
+  captions: `fatal runtime error: Rust cannot catch foreign exceptions` in a blocking task of
+  `PseudoStream<RoutedChunkDecoder>::push` (a C++ exception from the decoder; Vietnamese
+  Zipformer, CPU, mic + system channels). Not reproduced with 25 s of room noise under
+  `gdb catch throw`; real speech probably needed. If you've seen ORT throw on short/odd chunks,
+  that's my first suspect. I'll catch it under gdb on the laptop when the user can talk.
