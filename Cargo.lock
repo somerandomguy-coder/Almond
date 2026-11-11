@@ -183,6 +183,7 @@ dependencies = [
  "symphonia",
  "tokio",
  "tracing",
+ "unicode-normalization",
  "url",
  "wiremock",
 ]

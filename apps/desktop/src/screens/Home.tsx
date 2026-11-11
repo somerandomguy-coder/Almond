@@ -13,6 +13,10 @@ import { startNotes } from "../lib/startNotes";
 import type { ImportProgress } from "../api/types";
 import { useAppState } from "../state/AppState";
 import { Button, Card, ErrorNote, Highlighted, Icon, Loading, Pill, SectionTitle } from "../components/ui";
+import { AskAlmond } from "../components/chat/AskAlmond";
+import type { ChatScope } from "../gen/ChatScope";
+
+const HOME_SCOPE: ChatScope = { type: "all" };
 
 function UploadIcon(p: SVGProps<SVGSVGElement>) {
   return (
@@ -403,6 +407,12 @@ export function Home() {
       ) : (
         <>
           {upcoming.error ? <ErrorNote error={upcoming.error} onRetry={upcoming.reload} /> : upcoming.data ? <Upcoming events={upcoming.data} now={now} /> : <Loading />}
+          <AskAlmond
+            scope={HOME_SCOPE}
+            title={t("chat.title")}
+            placeholder={t("chat.placeholder")}
+            suggestions={[t("chat.suggestions.today"), t("chat.suggestions.decided"), t("chat.suggestions.prep")]}
+          />
           {meetings.error ? <ErrorNote error={meetings.error} onRetry={meetings.reload} /> : meetings.data ? <Recent meetings={meetings.data} onImport={importFile} importing={imp.busy} /> : <Loading />}
         </>
       )}

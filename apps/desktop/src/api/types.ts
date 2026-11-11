@@ -7,6 +7,9 @@ import type { ActionResult } from "../gen/ActionResult";
 import type { Artifact } from "../gen/Artifact";
 import type { AudioDeviceInfo } from "../gen/AudioDeviceInfo";
 import type { CalendarSourceInfo } from "../gen/CalendarSourceInfo";
+import type { ChatEntry } from "../gen/ChatEntry";
+import type { ChatScope } from "../gen/ChatScope";
+import type { ChatThread } from "../gen/ChatThread";
 import type { CalendarSourcesResult } from "../gen/CalendarSourcesResult";
 import type { CreateMeetingParams } from "../gen/CreateMeetingParams";
 import type { DeviceId } from "../gen/DeviceId";
@@ -94,6 +97,31 @@ export interface ApiMethods {
   "storage.usage": [Record<string, never>, StorageUsage];
   "settings.get": [{ key: string }, JsonValue];
   "settings.set": [{ key: string; value: JsonValue }, null];
+  // ---- chat ("Ask Almond", Rust: almond_core::chat) ----
+  /** Ask in a thread; a new `thread_id` (client-chosen) or none starts a thread. Answer streams via `chat.delta`. */
+  "chat.ask": [ChatAskParams, { thread_id: Id; entry: ChatEntry }];
+  /** Threads, most recently updated first. */
+  "chat.threads": [{ scope?: ChatScope | null; limit?: number }, ChatThread[]];
+  "chat.get": [{ thread_id: Id }, ChatThread];
+  "chat.delete": [{ thread_id: Id }, null];
+  /** Stop a streaming answer (what was written so far is kept); true if one was running. */
+  "chat.cancel": [{ thread_id: Id }, boolean];
+}
+
+/** `chat.ask` params. `scope` defaults to `{ type: "all" }` for a new thread. */
+export interface ChatAskParams {
+  thread_id?: Id | null;
+  scope?: ChatScope | null;
+  message: string;
+  /** Answer language; default: the question's language, else `ui.language`. */
+  lang?: "vi" | "en" | null;
+}
+
+/** `chat.delta` payload: `text` is the next piece of the answer (append it). */
+export interface ChatDelta {
+  thread_id: Id;
+  entry_id: Id;
+  text: string;
 }
 
 /** `llm.status` (Rust: `almond_core::processing::api::llm_status`). */
@@ -157,6 +185,7 @@ export interface ApiNotifications {
   "sync.progress": SyncProgress;
   "calendar.reminder": MeetingReminder;
   "import.progress": ImportProgress;
+  "chat.delta": ChatDelta;
 }
 export type NotificationName = keyof ApiNotifications;
 

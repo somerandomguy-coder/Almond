@@ -27,6 +27,10 @@ iana-time-zone = "0.1.65"
 symphonia = { version = "0.5.5", default-features = false, features = ["all"] }
 # meetings.import: Opus in Ogg/WebM/MKV (symphonia has no Opus decoder); same libopus as almond-audio.
 opus = "0.4"
+# chat: local dates in the model's context.
+chrono = { version = "0.4.45", default-features = false, features = ["clock", "std"] }
+# chat: diacritic folding for keyword matching.
+unicode-normalization = "0.1.26"
 
 [features]
 default = []

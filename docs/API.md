@@ -92,6 +92,38 @@ The UI never touches storage directly — it only calls these methods.
 | `models.downloadProgress` | `ModelDownloadProgress` |
 | `import.progress` | `{ meeting_id, path, file_name, stage: "decoding" \| "storing" \| "done" \| "failed" \| "cancelled", progress: number \| null, processed_ms, duration_ms: number \| null, decoder: "symphonia" \| "opus" \| "ffmpeg" \| null, error: string \| null }` (≈ every 250 ms during `meetings.import`) |
 
+## Ask Almond (chat)
+
+Chat with the local LLM about the user's meetings, notes, calendar and people
+(`crates/almond-core/src/chat/`). A thread is a synced record (collection `chat`, type
+`ChatThread`); the whole thread is one record, last writer wins.
+
+| Method | Params | Result |
+|---|---|---|
+| `chat.ask` | `{ thread_id?, scope?: ChatScope, message, lang?: "vi" \| "en" }`: no `thread_id`, or one that doesn't exist yet (ASCII letters, digits, `-`, `_`, ≤ 64 chars), starts a thread with that id and `scope` (default `{ type: "all" }`); an existing thread keeps its scope. `lang` defaults to the question's language, else `ui.language` | `{ thread_id, entry: ChatEntry }`: the assistant's answer, resolved when it finished streaming and the thread was saved. `entry.text` is Markdown with `[n]` markers; `entry.sources` are the cited `ChatSource`s (`n` = marker; `meeting_id`, `span` for transcript lines, `event` for calendar events). Markers without a source are removed. Errors: `-32602` empty/too long (4000 chars) message, bad id, scope mismatch, or the thread is already answering; `-32004` unknown meeting/person in `scope`; `-32603` with a message starting "Ollama isn't running at …" / "Ask Almond can't reach Ollama at …" when there is no LLM |
+| `chat.threads` | `{ scope?: ChatScope, limit? }` | `ChatThread[]`, most recently updated first |
+| `chat.get` | `{ thread_id }` | `ChatThread` (`-32004` if missing) |
+| `chat.delete` | `{ thread_id }` | `null` (a synced delete; stops an answer in progress) |
+| `chat.cancel` | `{ thread_id }` | `boolean`: an answer was streaming; it stops and what was written so far is saved |
+
+Notification `chat.delta` `{ thread_id, entry_id, text }` while an answer streams: `text` is the
+next piece (append it); `entry_id` is the id the final `entry` will have.
+
+**Context per scope** (numbered sources, ≈10k tokens; `num_ctx` follows the prompt size):
+- `all`: calendar events from today through 7 days ahead (attendees, linked meeting), full-text
+  hits for the question's keywords (diacritic-folded; transcript lines with their neighbours,
+  summaries), the user's notes and recipe outputs that mention them, digests of the most recent
+  meetings, people mentioned by name, and the people catalog with "last met".
+- `meeting`: summary, action items, the user's notes, AI notes (without a summary), recipe outputs,
+  and the transcript in chunks (when too long: chunks matching the question first, the rest spread
+  evenly). Speaker labels show people's names.
+- `person`: the person (emails, aliases, notes, their meetings), upcoming events with them (by
+  attendee email), and per meeting a digest plus what they said (`speaker_labels`).
+
+**Model:** slot `llm_chat` when the user selected one (`models.select { task: "llm_chat", model }`),
+else `llm_summary` (default `gemma4:12b` on the PC). Instructions are English; the answer is in
+Vietnamese or English as above.
+
 ## External processors (JSON-RPC over stdio or HTTP)
 
 An external processor is any program implementing:
