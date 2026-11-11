@@ -36,6 +36,17 @@ def main() -> None:
     items_p, variants_p, res_dir = dataset(ds)
     res_dir.mkdir(parents=True, exist_ok=True)
     items = read_jsonl(items_p)[:limit]
+    if "--sample" in sys.argv:  # small stratified subset (clean / positive x vi / en), fixed seed
+        import random
+        k = int(sys.argv[sys.argv.index("--sample") + 1])
+        rng = random.Random(11)
+        strata = {}
+        for it in items:
+            strata.setdefault((bool(it["gold"]), it["lang"]), []).append(it)
+        picked = []
+        for key in sorted(strata):
+            picked += rng.sample(strata[key], min(len(strata[key]), max(1, k // len(strata))))
+        items = picked[:k]
     cache_dir = (OUT if ds == "synthetic" else PRIVATE) / "cache"
     t0 = time.time()
     if system in ("symai", "symai_vi"):

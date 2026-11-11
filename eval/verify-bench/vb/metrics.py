@@ -201,6 +201,8 @@ def main() -> None:
                 groups[f"lang={it['lang']}"].append((it, r))
                 groups[f"subset={it['subset']}"].append((it, r))
                 groups[f"subset={it['subset']}|lang={it['lang']}"].append((it, r))
+                if ds == "personal" and it["item"] in res.get("judge", {}):
+                    groups["sample20"].append((it, r))  # same 20 claims for every system
             sysrep["groups"] = {g: stats(v) for g, v in sorted(groups.items())}
             by_type = defaultdict(list)
             for it, r in pairs:
@@ -240,7 +242,7 @@ def tables(rep: dict) -> str:
     order = SYSTEMS + ["hybrid_rules_judge", "hybrid_rules_judge_nli", "hybrid_almond_symai", "hybrid_proposal"]
     for ds, d in rep["datasets"].items():
         out.append(f"\n## {ds}\n")
-        for g in ["all", "lang=vi", "lang=en"] + sorted({k for s in d["systems"].values() for k in s["groups"] if k.startswith("subset=") and "|" not in k}):
+        for g in ["all", "lang=vi", "lang=en", "sample20"] + sorted({k for s in d["systems"].values() for k in s["groups"] if k.startswith("subset=") and "|" not in k}):
             out.append(f"\n### {ds} · {g}\n")
             out.append("| system | n pos / clean | recall [95% CI] | precision | false alarms [95% CI] | AUROC | ms/claim (median) | s/meeting |")
             out.append("|---|---|---|---|---|---|---|---|")

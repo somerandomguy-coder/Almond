@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import sqlite3
 import threading
 import time
@@ -16,7 +17,7 @@ from vb.paths import MODEL, OLLAMA
 
 
 class Ollama:
-    def __init__(self, cache: Path | None, model: str = MODEL, url: str = OLLAMA, num_ctx: int = 8192):
+    def __init__(self, cache: Path | None, model: str = MODEL, url: str = OLLAMA, num_ctx: int = 4096):
         self.model, self.url, self.num_ctx = model, url.rstrip("/"), num_ctx
         self.db = None
         self.lock = threading.Lock()
@@ -49,6 +50,9 @@ class Ollama:
                 self.hits += 1
                 self.last_ms = row[1]
                 return row[0]
+        pause = float(os.environ.get("VB_SLEEP", "0"))  # be gentle with a shared GPU
+        if pause:
+            time.sleep(pause)
         t0 = time.perf_counter()
         for attempt in range(3):
             try:
