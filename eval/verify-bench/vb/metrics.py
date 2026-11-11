@@ -37,6 +37,8 @@ def load(ds: str):
     for p in (base / "results").glob("*.jsonl"):
         rows = read_jsonl(p)
         meta_p = p.with_name(p.name + ".meta.json")
+        if rows and "ms" not in rows[0] and not meta_p.exists():
+            continue  # Rust runner still writing (no totals yet)
         if meta_p.exists():  # Rust runner: per-claim latency from the run's totals
             meta = json.loads(meta_p.read_text(encoding="utf-8"))
             per_judge = meta["judge_ms"] / meta["judge_calls"] if meta.get("judge_calls") else 0.0
@@ -57,6 +59,9 @@ def load(ds: str):
 
 def _row(label, score, ms):
     return {"label": label, "score": score, "ms": ms}
+
+
+DISTORTION = {"ACC-HDG-01", "ACC-QNT-01", "ACC-GEN-01", "ACC-NUM-01", "ACC-TMP-01"}
 
 
 def hybrid_rows(items, res) -> dict[str, dict]:
@@ -83,6 +88,21 @@ def hybrid_rows(items, res) -> dict[str, dict]:
                 lab = jud["label"]
             out["hybrid_rules_judge_nli"][i] = _row(lab, 0.5 * jud["score"] + 0.5 * sc["score"],
                                                      sym["ms"] + jud["ms"] + sc["ms"])
+        # H4 (proposal): plain judge + Almond's precise atom contradictions + SymAI-style lexical
+        # *distortion* rules only (hedge / quantifier / genericity / number / time-frame features of
+        # the claim vs its aligned segment). Fabrication / support stays with the judge.
+        if sym and jud and symvi:
+            distort = sorted(set(symvi.get("rules", [])) & DISTORTION)
+            if sym["label"] == "contradicted":
+                lab = "contradicted"
+            elif jud["label"] != "supported":
+                lab = jud["label"]
+            elif distort:
+                lab = "unsupported"
+            else:
+                lab = "supported"
+            score = max(jud["score"], 0.75 if distort else 0.0, sym["score"] if sym["label"] == "contradicted" else 0.0)
+            out["hybrid_proposal"][i] = _row(lab, score, sym["ms"] + jud["ms"] + symvi["ms"])
         # H3: Almond current + SymAI-VI symbolic distortion rules (either flags)
         if full and symvi:
             flag = full["label"] != "supported" or symvi["label"] != "supported"
@@ -92,7 +112,8 @@ def hybrid_rows(items, res) -> dict[str, dict]:
 
 
 NAMES.update({"hybrid_rules_judge": "Hybrid: Almond rules + judge", "hybrid_rules_judge_nli": "Hybrid: rules + judge + NLI veto",
-              "hybrid_almond_symai": "Hybrid: Almond current OR SymAI-VI"})
+              "hybrid_almond_symai": "Hybrid: Almond current OR SymAI-VI",
+              "hybrid_proposal": "Proposal: judge + Almond atoms + VI/EN distortion rules"})
 
 
 # ------------------------------------------------------------------------------------- metrics
@@ -216,7 +237,7 @@ def _ci(c):
 
 def tables(rep: dict) -> str:
     out = []
-    order = SYSTEMS + ["hybrid_rules_judge", "hybrid_rules_judge_nli", "hybrid_almond_symai"]
+    order = SYSTEMS + ["hybrid_rules_judge", "hybrid_rules_judge_nli", "hybrid_almond_symai", "hybrid_proposal"]
     for ds, d in rep["datasets"].items():
         out.append(f"\n## {ds}\n")
         for g in ["all", "lang=vi", "lang=en"] + sorted({k for s in d["systems"].values() for k in s["groups"] if k.startswith("subset=") and "|" not in k}):
