@@ -25,6 +25,7 @@ pub mod models;
 pub mod playback;
 pub mod recording;
 pub mod transcribe;
+pub mod voice;
 
 pub use engines::SpeechOverride;
 pub use models::{download_speech_model, speech_models};

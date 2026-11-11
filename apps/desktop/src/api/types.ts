@@ -39,6 +39,12 @@ import type { UpcomingEvent } from "../gen/UpcomingEvent";
 import type { UpdateMeetingParams } from "../gen/UpdateMeetingParams";
 import type { VerifierDescriptor } from "../gen/VerifierDescriptor";
 import type { JsonValue } from "../gen/serde_json/JsonValue";
+// people
+import type { LabelSource } from "../gen/LabelSource";
+import type { Person } from "../gen/Person";
+import type { SpeakerLabel } from "../gen/SpeakerLabel";
+import type { SpeakerLabels } from "../gen/SpeakerLabels";
+import type { VoicePrint } from "../gen/VoicePrint";
 
 /** Method name → [params, result]. Keys are exactly the docs/API.md method names. */
 export interface ApiMethods {
@@ -94,6 +100,69 @@ export interface ApiMethods {
   "storage.usage": [Record<string, never>, StorageUsage];
   "settings.get": [{ key: string }, JsonValue];
   "settings.set": [{ key: string; value: JsonValue }, null];
+  // ---- people (docs/API.md "People") ----
+  "people.list": [Record<string, never>, PersonSummary[]];
+  "people.get": [{ id: Id }, PersonDetail];
+  "people.save": [SavePersonParams, Person];
+  "people.delete": [{ id: Id }, null];
+  "people.merge": [{ keep: Id; remove: Id }, Person];
+  /** Label a transcript speaker as a person (creates one from `name`; adds a voice print). */
+  "people.labelSpeaker": [LabelSpeakerParams, SpeakerLabels];
+  "people.unlabelSpeaker": [{ meeting_id: Id; speaker: string }, SpeakerLabels];
+  /** Labels the core would suggest now (voice, calendar, "me"); nothing is written. */
+  "people.suggestions": [{ meeting_id: Id }, SpeakerLabel[]];
+}
+
+// ---- people ----
+
+/** `people.list` item. Voice prints come without vectors. */
+export interface PersonSummary {
+  person: Person;
+  meeting_count: number;
+  talk_time_s: number;
+  last_met: number | null;
+}
+
+/** One meeting with a person (by speaker labels and/or calendar attendee email). */
+export interface PersonMeeting {
+  meeting_id: Id;
+  title: string;
+  started_at: number;
+  speakers: string[];
+  talk_time_s: number;
+  /** Strongest label source; null when linked only as a calendar attendee. */
+  source: LabelSource | null;
+  attendee: boolean;
+}
+
+/** `people.get`. */
+export interface PersonDetail {
+  person: Person;
+  /** Newest first. */
+  meetings: PersonMeeting[];
+  talk_time_s: number;
+  last_met: number | null;
+}
+
+/** `people.save`: create (no id) or update; omitted fields keep their value. */
+export interface SavePersonParams {
+  id?: Id | null;
+  name: string;
+  emails?: string[] | null;
+  aliases?: string[] | null;
+  notes?: string | null;
+  is_self?: boolean | null;
+  /** Prints to keep (matched by meeting_id + speaker + created_at); leaving one out deletes it. */
+  voiceprints?: VoicePrint[] | null;
+}
+
+/** `people.labelSpeaker`: exactly one of person_id, name, me. */
+export interface LabelSpeakerParams {
+  meeting_id: Id;
+  speaker: string;
+  person_id?: Id | null;
+  name?: string | null;
+  me?: boolean;
 }
 
 /** `llm.status` (Rust: `almond_core::processing::api::llm_status`). */

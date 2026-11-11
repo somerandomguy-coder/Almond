@@ -20,6 +20,9 @@ import { ActionsPanel, AudioBar, EnhancedNotesView, JobsList } from "../componen
 import { ActionItemsView, SummaryView } from "../components/meeting/SummaryView";
 import { NotesEditor } from "../components/NotesEditor";
 import { TranscriptPanel, type TranscriptLine } from "../components/TranscriptPanel";
+import { SpeakerChip } from "../components/people/SpeakerChip";
+import { useSpeakerPeople } from "../components/people/useSpeakerPeople";
+import { SpeakerNamesContext } from "../lib/people";
 import { Button, cx, ErrorNote, Icon, Loading, Spinner } from "../components/ui";
 
 type Tab = "notes" | "summary" | "actions" | "transcript";
@@ -136,15 +139,11 @@ function MeetingView({ detail }: { detail: MeetingDetail }) {
   }, [isRecording, transcript, live]);
   const duration = isRecording ? recording.elapsed_ms : (transcript?.segments.at(-1)?.t1_ms ?? 0);
 
-  const speakerName = useCallback(
-    (sid: string | null) => {
-      if (!sid) return t("meeting.speakerUnknown");
-      const sp = transcript?.speakers.find((s) => s.id === sid);
-      if (sp?.name) return sp.name;
-      return sid === "me" ? t("app.you") : sid;
-    },
-    [transcript, t],
-  );
+  // People: speaker labels → names (feature "people").
+  const fallbackName = useCallback((sid: string) => (sid === "me" ? t("app.you") : sid), [t]);
+  const people = useSpeakerPeople(id, artifacts, transcriptArt?.id ?? null, transcript, fallbackName);
+  const speakerInfo = people.info;
+  const speakerName = useCallback((sid: string | null) => (sid ? speakerInfo(sid).name : t("meeting.speakerUnknown")), [speakerInfo, t]);
 
   const jump = useCallback(
     (span: SpanRef) => {
@@ -247,6 +246,7 @@ function MeetingView({ detail }: { detail: MeetingDetail }) {
 
   return (
     <CitationContext.Provider value={citationCtx}>
+      <SpeakerNamesContext.Provider value={people.names}>
       <div className="flex h-full min-h-0 flex-col">
         {/* Header */}
         <header className="border-b border-line px-4 pt-4 pb-0 sm:px-8">
@@ -395,6 +395,11 @@ function MeetingView({ detail }: { detail: MeetingDetail }) {
                 live={isRecording}
                 focus={focus}
                 speakerName={speakerName}
+                renderSpeaker={
+                  transcriptArt && !isRecording
+                    ? (sid, color) => <SpeakerChip meetingId={id} speaker={sid} info={speakerInfo(sid)} people={people.people} colorClass={color} onLabelled={people.onLabelled} />
+                    : undefined
+                }
                 onSeek={(ms) => {
                   setAudioPos(ms);
                 }}
@@ -403,6 +408,7 @@ function MeetingView({ detail }: { detail: MeetingDetail }) {
           </aside>
         </div>
       </div>
+      </SpeakerNamesContext.Provider>
     </CitationContext.Provider>
   );
 }
