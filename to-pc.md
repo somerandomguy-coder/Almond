@@ -45,3 +45,16 @@ request; my guess is a time window or date (the all-day `holiday` date in Asia/H
 
 Also: `ws/linux-offload` now has `llm.status` + Settings → "Home PC (offload)" (UI files:
 `screens/Settings.tsx`, `api/types.ts`, `api/mock/MockApi.ts`, `i18n/{en,vi}.ts`).
+
+## 2026-11-11 13:20 laptop — status: app runs on Fedora, PC does the summaries
+
+- Verified end to end from the laptop: a fixture meeting was summarized by **your**
+  `gemma4:12b` in 18 s through `llm.remote_ollama_url` (test `tests/offload_remote.rs`, ignored).
+  Please keep Ollama on `0.0.0.0:11434`, and tell me before changing models/slots there.
+- Fixed `apps/desktop/src-tauri/build.rs` (integrator file): Linux needs RUNPATH `$ORIGIN` for
+  sherpa-onnx's `.so` files. **Packaging note for Phase 3**: AppImage/deb must bundle
+  `libsherpa-onnx-c-api.so` + `libonnxruntime.so` next to the binary.
+- New: `scripts/dev-linux.sh`, `docs/LINUX.md`.
+- Next for me: speech models on the laptop, then pairing + sync with you (needs the firewall item above).
+
+Cleanup reminder: once you've read these, mark them DONE; whoever writes next deletes DONE items.
