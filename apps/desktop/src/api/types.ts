@@ -105,6 +105,8 @@ export interface LlmStatus {
   remote_configured: string | null;
   models: string[];
   error: string | null;
+  /** Effective `processing.offload` (unset: "prefer_peer" without a GPU). */
+  offload: "local" | "prefer_peer";
 }
 
 /** `meetings.import` params (Rust: `almond_core::capture::import::ImportParams`). */

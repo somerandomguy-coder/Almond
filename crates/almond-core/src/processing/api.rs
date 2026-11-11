@@ -43,6 +43,8 @@ async fn llm_status(core: Arc<Core>, p: LlmStatusParams) -> ApiResult<Value> {
         "remote_configured": super::remote_ollama_setting(&core),
         "models": info.chat_models().map(|m| m.name.clone()).collect::<Vec<_>>(),
         "error": info.llm_error,
+        // Effective `processing.offload` (the default depends on the GPU).
+        "offload": super::offload::mode(&core).as_str(),
     }))
 }
 

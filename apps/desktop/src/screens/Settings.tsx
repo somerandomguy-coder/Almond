@@ -299,7 +299,11 @@ function Offload() {
   const [err, setErr] = useState<string | null>(null);
   useEffect(() => {
     void api.call("settings.get", { key: "llm.remote_ollama_url" }).then((v) => setUrl(typeof v === "string" ? v : "")).catch(() => {});
-    void api.call("settings.get", { key: "processing.offload" }).then((v) => setMode(v === "prefer_peer" ? v : "local")).catch(() => {});
+    // Unset → the device's default (llm.status reports the effective one).
+    void api
+      .call("settings.get", { key: "processing.offload" })
+      .then((v) => (v === "prefer_peer" || v === "local" ? setMode(v) : api.call("llm.status", {}).then((st) => setMode(st.offload))))
+      .catch(() => {});
     void api.call("settings.get", { key: "processing.offload_wait_min" }).then((v) => typeof v === "number" && setWait(v)).catch(() => {});
     void api.call("llm.status", {}).then(setStatus).catch(() => {});
   }, [api]);

@@ -15,7 +15,7 @@ mod actions;
 mod api;
 pub mod caps;
 mod jobloop;
-mod offload;
+pub(crate) mod offload;
 mod procs;
 mod stubs;
 
@@ -64,6 +64,8 @@ pub struct State {
     llm: Mutex<LlmSource>,
     /// The remote Ollama (setting `llm.remote_ollama_url`) when it answered the last probe.
     remote_live: Mutex<Option<String>>,
+    /// When paired peers were last reachable (offload policy).
+    pub(crate) reach: offload::Reachability,
     /// Serializes capability refreshes so the latest one wins.
     caps_lock: tokio::sync::Mutex<()>,
     pub(crate) caps: Mutex<CapsInfo>,
@@ -116,6 +118,7 @@ impl State {
             wake: Arc::new(Notify::new()),
             llm: Mutex::new(LlmSource::default()),
             remote_live: Mutex::new(None),
+            reach: Default::default(),
             caps_lock: tokio::sync::Mutex::new(()),
             caps: Mutex::new(CapsInfo::default()),
             progress: Mutex::new(HashMap::new()),

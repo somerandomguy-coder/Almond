@@ -16,7 +16,7 @@ mod real {
     use almond_types::LangTag;
     use almond_types::artifact::body::Segment;
     use almond_types::meeting::AudioChannel;
-    use almond_types::stt::{SttEngine, SttOptions};
+    use almond_types::stt::SttOptions;
     use serde_json::Value;
     use std::io::BufRead;
     use std::path::PathBuf;

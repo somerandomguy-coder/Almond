@@ -49,6 +49,16 @@ pub struct Speech {
     over: RwLock<Option<SpeechOverride>>,
 }
 
+/// Whether this build has the engine a registry model needs (features `whisper` / `sherpa`).
+pub(crate) fn engine_compiled(engine: &str) -> bool {
+    let whisper = engine == "whisper";
+    let sherpa = matches!(
+        engine,
+        "sherpa-transducer" | "sherpa-pyannote" | "sherpa-embedding"
+    );
+    (whisper && cfg!(feature = "whisper")) || (sherpa && cfg!(feature = "sherpa"))
+}
+
 pub fn device_class() -> DeviceClass {
     if cfg!(target_os = "android") {
         DeviceClass::Mobile
@@ -106,12 +116,7 @@ impl Speech {
         let entry = mgr.entry(id)?;
         // Say "not compiled in" before "not installed": downloading won't help a build without
         // the engine (and this makes the error independent of which models a machine has).
-        let compiled = match entry.engine.as_str() {
-            "whisper" => cfg!(feature = "whisper"),
-            "sherpa-transducer" => cfg!(feature = "sherpa"),
-            _ => false,
-        };
-        if !compiled {
+        if !engine_compiled(&entry.engine) {
             return Err(Error::Unsupported(format!(
                 "speech engine {:?} (model {id}) is not compiled into this build; \
                  build with --features whisper,sherpa (cuda on the GPU PC)",
@@ -186,10 +191,24 @@ impl Speech {
         }
         let primary = languages.first().cloned().unwrap_or_else(default_language);
         let t = self.table();
-        let lid = self
-            .load(&t.fallback.offline)
-            .ok()
-            .and_then(|l| l.lid.clone());
+        // Language ID is a whisper encoder pass per final: ~0.2 s on the GPU, ~7 s with
+        // whisper-small on a 4-core laptop CPU (Fedora i7-10610U), where captions would fall
+        // further behind with every utterance. Without a GPU, live captions stay in the
+        // primary language (Zipformer for Vietnamese, RTF 0.02 there); the post-meeting
+        // transcript still routes languages (on the PC when it is offloaded).
+        let live_lid = self.device == DeviceClass::DesktopGpu;
+        let languages: &[LangTag] = if live_lid {
+            languages
+        } else {
+            std::slice::from_ref(&primary)
+        };
+        let lid = if live_lid {
+            self.load(&t.fallback.offline)
+                .ok()
+                .and_then(|l| l.lid.clone())
+        } else {
+            None
+        };
         let mut partial: BTreeMap<String, Arc<dyn LiveModel>> = BTreeMap::new();
         let mut finals: BTreeMap<String, Arc<dyn LiveModel>> = BTreeMap::new();
         let mut langs = vec![];

@@ -140,9 +140,13 @@ async fn worker(weak: Weak<Core>, work: Arc<Notify>) {
             _ = work.notified() => {}
             _ = tokio::time::sleep(WORK_EVERY) => {}
         }
-        let Some(runner) = weak.upgrade().map(|c| c.processing.runner.clone()) else {
+        let Some(core) = weak.upgrade() else {
             return;
         };
+        // Before claiming: which peers were reachable lately (offload policy).
+        super::offload::refresh_reachability(&core).await;
+        let runner = core.processing.runner.clone();
+        drop(core);
         match runner.run_pending().await {
             Ok(results) => {
                 for r in results {

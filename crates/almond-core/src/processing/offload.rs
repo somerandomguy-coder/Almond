@@ -1,8 +1,8 @@
 //! Offload policy: a weak device (the Fedora laptop) leaves heavy jobs for a stronger paired peer
 //! (the home PC, reachable over Tailscale) instead of claiming them itself.
 //!
-//! Setting `processing.offload`:
-//! - `"local"` (default): run everything this device can (the runner's normal behavior).
+//! Setting `processing.offload` (unset: `"prefer_peer"` on devices without a GPU, else `"local"`):
+//! - `"local"`: run everything this device can (the runner's normal behavior).
 //! - `"prefer_peer"`: leave a job unclaimed while a paired peer with a `gpu` that can run it was
 //!   synced with recently, for at most `processing.offload_wait_min` minutes (default 20) after
 //!   the job was requested; then run it here anyway. Jobs pinned to this device are never left,
@@ -16,9 +16,37 @@
 use crate::Core;
 use crate::settings::keys;
 use almond_pipeline::DeferFn;
+use almond_types::DeviceId;
 use almond_types::job::{Capability, Job};
+use almond_types::sync::Transport;
 use almond_types::time::{UnixMs, now_ms};
+use std::collections::HashMap;
 use std::sync::{Arc, Mutex, Weak};
+
+/// Last time each peer was reachable: a sync either side started, or discovery. Refreshed by the
+/// job worker before each round ([`refresh_reachability`]): `discover()` is async, the defer hook
+/// isn't, and `last_synced` alone only counts syncs this device started.
+#[derive(Default)]
+pub(crate) struct Reachability(Mutex<HashMap<DeviceId, UnixMs>>);
+
+pub(crate) async fn refresh_reachability(core: &Core) {
+    if mode(core) == Mode::Local {
+        return;
+    }
+    match core.node.transport.discover().await {
+        Ok(peers) => {
+            let mut m = core.processing.reach.0.lock().unwrap();
+            for p in peers {
+                let t = p.last_seen.max(p.last_synced);
+                if let Some(t) = t {
+                    let e = m.entry(p.device.id).or_insert(t);
+                    *e = (*e).max(t);
+                }
+            }
+        }
+        Err(e) => tracing::debug!("offload: discover failed: {e}"),
+    }
+}
 
 /// A peer counts as reachable if a sync with it succeeded this recently.
 const PEER_RECENT_MS: i64 = 15 * 60_000;
@@ -74,16 +102,43 @@ pub(crate) fn should_defer(job: &Job, now: UnixMs, s: &Snapshot) -> bool {
     })
 }
 
-fn snapshot(core: &Core) -> Snapshot {
-    let mode = match core
+/// Effective policy: the setting, else `prefer_peer` without a GPU. On the Fedora laptop the
+/// post-meeting transcript runs at ~4.5x real time on the CPU (whisper-small language ID) vs
+/// ~0.05x on the PC; without a recently synced GPU peer `prefer_peer` changes nothing.
+pub(crate) fn mode(core: &Core) -> Mode {
+    match core
         .setting_as::<String>(keys::OFFLOAD)
         .ok()
         .flatten()
         .as_deref()
     {
         Some("prefer_peer") => Mode::PreferPeer,
+        Some("local") => Mode::Local,
+        // The advertised `gpu` capability (detected NVIDIA GPU or configured), as for peers.
+        _ if !core
+            .processing
+            .capabilities()
+            .capabilities
+            .iter()
+            .any(|c| c.0 == "gpu") =>
+        {
+            Mode::PreferPeer
+        }
         _ => Mode::Local,
-    };
+    }
+}
+
+impl Mode {
+    pub(crate) fn as_str(self) -> &'static str {
+        match self {
+            Mode::Local => "local",
+            Mode::PreferPeer => "prefer_peer",
+        }
+    }
+}
+
+fn snapshot(core: &Core) -> Snapshot {
+    let mode = mode(core);
     let wait_min = core
         .setting_as::<i64>(keys::OFFLOAD_WAIT_MIN)
         .ok()
@@ -95,6 +150,7 @@ fn snapshot(core: &Core) -> Snapshot {
         vec![]
     } else {
         let known = core.store().devices().unwrap_or_default();
+        let reach = core.processing.reach.0.lock().unwrap().clone();
         core.node
             .transport
             .paired_peers()
@@ -107,7 +163,8 @@ fn snapshot(core: &Core) -> Snapshot {
                     .find(|d| d.id == p.info.id)
                     .map(|d| d.capabilities.clone())
                     .unwrap_or_else(|| p.info.capabilities.clone());
-                (caps, p.last_synced)
+                let seen = reach.get(&p.info.id).copied();
+                (caps, p.last_synced.max(seen))
             })
             .collect()
     };

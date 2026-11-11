@@ -705,6 +705,7 @@ export class MockApi implements AlmondApi {
         remote_configured: configured,
         models: configured ? ["gemma4:12b", "qwen3.5:4b"] : ["qwen3.5:4b"],
         error: null,
+        offload: this.settings.get("processing.offload") === "prefer_peer" ? "prefer_peer" : "local",
       };
     },
     "storage.usage": function () {

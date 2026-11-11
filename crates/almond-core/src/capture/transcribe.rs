@@ -48,14 +48,9 @@ pub fn speech_capabilities(core: &Core) -> Vec<Capability> {
     let Ok(mgr) = ModelManager::new(&core.cfg.models_dir) else {
         return vec![];
     };
-    let compiled = |engine: &str| match engine {
-        "whisper" => cfg!(feature = "whisper"),
-        "sherpa-transducer" | "sherpa-pyannote" | "sherpa-embedding" => cfg!(feature = "sherpa"),
-        _ => false,
-    };
     let usable = |id: &str| {
         mgr.entry(id)
-            .map(|e| compiled(&e.engine) && mgr.is_installed(id))
+            .map(|e| super::engines::engine_compiled(&e.engine) && mgr.is_installed(id))
             .unwrap_or(false)
     };
     let t = core.capture.speech.table();
