@@ -41,7 +41,7 @@ export function ReminderToast() {
   };
 
   return (
-    <div role="status" aria-live="polite" className="fixed inset-x-3 bottom-20 z-50 mx-auto max-w-md md:bottom-6 md:right-6 md:left-auto md:mx-0 md:w-96">
+    <div role="status" aria-live="polite" className="fixed inset-x-3 top-16 z-50 mx-auto max-w-md md:top-6 md:right-6 md:left-auto md:mx-0 md:w-96">
       <div className="rounded-2xl border border-line bg-surface p-4 shadow-xl shadow-black/10">
         <div className="flex items-start gap-3">
           <span className="mt-0.5 rounded-full bg-accent-soft p-2 text-accent">

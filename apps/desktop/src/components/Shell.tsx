@@ -1,6 +1,9 @@
 import { useEffect } from "react";
 import { useTranslation } from "react-i18next";
-import { Link, NavLink, Outlet, useLocation } from "react-router";
+import { Link, NavLink, Outlet, useLocation, useMatch } from "react-router";
+import type { ChatScope } from "../gen/ChatScope";
+import type { ChatSource } from "../gen/ChatSource";
+import { AskAlmond } from "./chat/AskAlmond";
 import { ErrorBoundary } from "./ErrorBoundary";
 import { useApi } from "../api/context";
 import { formatClock } from "../lib/text";
@@ -43,6 +46,32 @@ function useAutoSync() {
       if (timer) clearInterval(timer);
     };
   }, [api]);
+}
+
+/** Event the open meeting listens to, to jump within its own transcript (see Meeting.tsx). */
+export const JUMP_EVENT = "almond:jump";
+
+/** The floating "Ask Almond" bar: its scope and prompt follow the page you're on. */
+function FloatingChat() {
+  const { t } = useTranslation();
+  const meeting = useMatch("/meeting/:id");
+  const person = useMatch("/people/:id");
+  const meetingId = meeting?.params.id;
+  const personId = person?.params.id;
+  const scope: ChatScope = meetingId
+    ? { type: "meeting", meeting_id: meetingId }
+    : personId
+      ? { type: "person", person_id: personId }
+      : { type: "all" };
+  const placeholder = meetingId ? t("chat.meetingPlaceholder") : personId ? t("chat.personPlaceholder") : t("chat.placeholder");
+  const onOpenSource = (s: ChatSource) => {
+    if (meetingId && s.meeting_id === meetingId && s.span) {
+      window.dispatchEvent(new CustomEvent(JUMP_EVENT, { detail: s.span }));
+      return true;
+    }
+    return false;
+  };
+  return <AskAlmond scope={scope} placeholder={placeholder} onOpenSource={onOpenSource} />;
 }
 
 export function Shell() {
@@ -108,7 +137,7 @@ export function Shell() {
         </div>
       </header>
 
-      <main className="min-h-0 flex-1 overflow-y-auto pb-20 md:pb-0">
+      <main className="min-h-0 flex-1 overflow-y-auto pb-40 md:pb-24">
         <ErrorBoundary resetKey={location.pathname}>
           <Outlet />
         </ErrorBoundary>
@@ -129,6 +158,7 @@ export function Shell() {
         ))}
       </nav>
 
+      <FloatingChat />
       <ReminderToast />
     </div>
   );

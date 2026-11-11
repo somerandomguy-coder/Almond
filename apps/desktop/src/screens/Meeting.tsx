@@ -19,15 +19,15 @@ import { CitationContext, type CitationCtx } from "../components/citationContext
 import { ActionsPanel, AudioBar, EnhancedNotesView, JobsList } from "../components/meeting/parts";
 import { ActionItemsView, SummaryView } from "../components/meeting/SummaryView";
 import { NotesEditor } from "../components/NotesEditor";
-import { AskAlmond } from "../components/chat/AskAlmond";
 import { RecipesPanel } from "../components/recipes/RecipesPanel";
 import { TranscriptPanel, type TranscriptLine } from "../components/TranscriptPanel";
 import { SpeakerChip } from "../components/people/SpeakerChip";
 import { useSpeakerPeople } from "../components/people/useSpeakerPeople";
 import { SpeakerNamesContext } from "../lib/people";
+import { JUMP_EVENT } from "../components/Shell";
 import { Button, cx, ErrorNote, Icon, Loading, Spinner } from "../components/ui";
 
-type Tab = "notes" | "summary" | "recipes" | "ask" | "actions" | "transcript";
+type Tab = "notes" | "summary" | "recipes" | "actions" | "transcript";
 
 function VuMeter({ levels }: { levels: [string, number][] }) {
   return (
@@ -171,6 +171,13 @@ function MeetingView({ detail }: { detail: MeetingDetail }) {
     [artifacts, speakerName, jump],
   );
 
+  // Source chips in the floating chat jump within this meeting's transcript.
+  useEffect(() => {
+    const onJump = (e: Event) => jump((e as CustomEvent<SpanRef>).detail);
+    window.addEventListener(JUMP_EVENT, onJump);
+    return () => window.removeEventListener(JUMP_EVENT, onJump);
+  }, [jump]);
+
   // Deep link from search: ?seg=3
   useEffect(() => {
     const seg = search.get("seg");
@@ -243,7 +250,6 @@ function MeetingView({ detail }: { detail: MeetingDetail }) {
     { id: "notes", label: t("meeting.tabs.notes") },
     { id: "summary", label: t("meeting.tabs.summary") },
     { id: "recipes", label: t("recipes.tab") },
-    { id: "ask", label: t("chat.tab") },
     { id: "actions", label: t("meeting.tabs.actions") },
     { id: "transcript", label: t("meeting.tabs.transcript"), mobileOnly: true },
   ];
@@ -366,15 +372,6 @@ function MeetingView({ detail }: { detail: MeetingDetail }) {
                   <SummaryView artifacts={artifacts} meetingId={id} devices={devices} transcriptId={transcriptArt?.id ?? null} />
                   <ActionItemsView artifacts={artifacts} />
                 </>
-              )}
-              {leftTab === "ask" && (
-                <AskAlmond
-                  scope={{ type: "meeting", meeting_id: id }}
-                  title={t("chat.meetingTitle")}
-                  placeholder={t("chat.meetingPlaceholder")}
-                  suggestions={[t("chat.suggestions.summary"), t("chat.suggestions.actions"), t("chat.suggestions.unclear")]}
-                  onOpenSource={(s) => (s.meeting_id === id && s.span ? (jump(s.span), true) : false)}
-                />
               )}
               {leftTab === "recipes" && <RecipesPanel meetingId={id} artifacts={artifacts} jobs={[...jobs.values()]} hasTranscript={!!transcriptArt} />}
               {leftTab === "actions" && (
