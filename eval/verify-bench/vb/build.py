@@ -372,7 +372,7 @@ def item_row(subset, m, vid, iid, b, typ, gold, original="") -> dict:
     ev = evidence_idx(tr, b["cites"])
     return {"item": iid, "subset": subset, "meeting": m["id"], "variant": vid, "lang": b.get("lang") or M.lang_of(b["text"]),
             "type": typ, "gold": gold, "text": b["text"], "original": original, "cites": b["cites"],
-            "evidence": [[k, tr[k][0], tr[k][2]] for k in ev],
+            "evidence": [[k, m["speakers"].get(tr[k][0], tr[k][0]), tr[k][2]] for k in ev],
             "meeting_lang": "mixed" if len({x[1] for x in tr}) > 1 else tr[0][1],
             "src": b.get("src", "clean" if not gold else "mutation")}
 
