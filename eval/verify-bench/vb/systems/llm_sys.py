@@ -16,7 +16,9 @@ def _ev(it: dict) -> str:
 
 
 def _llm(cache_dir) -> Ollama:
-    return Ollama(cache_dir / "gemma.sqlite")
+    llm = Ollama(cache_dir / "gemma.sqlite")
+    Ollama(None).chat("Reply OK.", "warm-up", num_predict=2)  # load the model outside timed calls
+    return llm
 
 
 class Translator:
@@ -158,19 +160,39 @@ def qa(items, cache_dir):
                        "\n".join(f"{k + 1}. {p['question']}" for k, p in enumerate(pairs)), ANSWER_SCHEMA) or {}
         ms += llm.last_ms
         got = ans.get("answers", [])
-        f1s, unans = [], 0
-        for k, p in enumerate(pairs):
-            a = got[k] if k < len(got) and isinstance(got[k], str) else "unanswerable"
-            if "unanswerable" in a.lower() or "not stated" in a.lower():
-                unans += 1
-                f1s.append(0.0)
-            else:
-                f1s.append(_f1(p["answer"], a))
-        mean = sum(f1s) / len(f1s)
-        label = "supported" if mean >= 0.5 and unans == 0 else ("unsupported" if unans else "contradicted")
-        rows.append({"item": it["item"], "label": label, "score": round(1 - mean, 4), "ms": ms, "calls": 2,
-                     "f1": [round(x, 2) for x in f1s]})
+        found = [got[k] if k < len(got) and isinstance(got[k], str) else "unanswerable" for k in range(len(pairs))]
+        f1s = [0.0 if _unans(a) else _f1(p["answer"], a) for p, a in zip(pairs, found)]
+        # Answer comparison: token F1 (QAGS) is too brittle across "200 triệu" / "hai trăm triệu" and
+        # VI/EN, so a learned-comparator step (as in QAFactEval) is done by the LLM.
+        cmp = llm.json(CMP_SYSTEM, "\n".join(
+            f"{k + 1}. QUESTION: {p['question']}\n   CLAIM ANSWER: {p['answer']}\n   TRANSCRIPT ANSWER: {a}"
+            for k, (p, a) in enumerate(zip(pairs, found))), CMP_SCHEMA) or {}
+        ms += llm.last_ms
+        verd = [v for v in cmp.get("verdicts", []) if v in ("same", "different", "unanswerable")]
+        verd += ["unanswerable" if _unans(a) else "different" for a in found[len(verd):]]
+        verd = [("unanswerable" if _unans(a) else v) for v, a in zip(verd, found)]
+        bad = sum(v != "same" for v in verd)
+        if not bad:
+            label = "supported"
+        elif "different" in verd:
+            label = "contradicted"
+        else:
+            label = "unsupported"
+        rows.append({"item": it["item"], "label": label, "score": round(bad / len(verd), 4), "ms": ms, "calls": 3,
+                     "f1": [round(x, 2) for x in f1s], "verdicts": verd})
     return rows
+
+
+def _unans(a: str) -> bool:
+    return "unanswerable" in a.lower() or "not stated" in a.lower()
+
+
+CMP_SYSTEM = """For each numbered item, compare the CLAIM ANSWER with the TRANSCRIPT ANSWER to the same \
+question. "same": they mean the same thing (paraphrase, other language, digits vs words, abbreviations are \
+fine). "different": they conflict or differ in a detail (number, name, date, negation, certainty, scope). \
+"unanswerable": the transcript answer is missing. JSON only: {"verdicts": ["same" | "different" | "unanswerable", ...]}"""
+CMP_SCHEMA = {"type": "object", "properties": {"verdicts": {"type": "array", "items": {
+    "type": "string", "enum": ["same", "different", "unanswerable"]}}}, "required": ["verdicts"]}
 
 
 # --------------------------------------------------------------------- SelfCheck (prompt variant)
