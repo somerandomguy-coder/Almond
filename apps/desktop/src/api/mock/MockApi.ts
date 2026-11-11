@@ -29,6 +29,7 @@ import * as fx from "./fixtures";
 import { builtinRecipes, mockRecipeOutput } from "./recipes";
 import type { RecipeInfo } from "../types";
 import type { Transcript as TranscriptBody } from "../../gen/Transcript";
+import { MockPeople } from "./people";
 
 export interface MockOptions {
   /** Time multiplier: 1 = realistic pacing, 20 = tests. */
@@ -74,6 +75,8 @@ export class MockApi implements AlmondApi {
   llmDown = false;
   /** Cookbook (recipes.*): built-ins first, then user recipes. */
   recipes: RecipeInfo[] = builtinRecipes();
+  /** `people.*` (catalog + speaker labels). */
+  people: MockPeople;
   /** What the mock "file picker" returns (`null` = the user closed it). Tests may change it. */
   pickedFile: string | null = "C:\\Users\\me\\Recordings\\Phỏng vấn khách hàng.m4a";
 
@@ -93,6 +96,15 @@ export class MockApi implements AlmondApi {
     this.sources = fx.calendarSources();
     this.peers = fx.peers(now);
     this.models = fx.models();
+    this.people = new MockPeople(
+      {
+        meetings: () => this.meetings,
+        artifacts: () => this.artifacts,
+        addArtifact: (a) => this.addArtifact(a),
+        event: (m) => (m.calendar_event ? (this.events.find((e) => e.event_id === m.calendar_event!.event_id) ?? null) : null),
+      },
+      now,
+    );
     this.settings.set("models.slots", fx.modelSlots() as unknown as JsonValue);
     this.settings.set("calendar.reminder_lead_min", 5);
     this.settings.set("sync.auto_while_open", false);
@@ -927,6 +939,31 @@ export class MockApi implements AlmondApi {
         seen.add(rid);
         return true;
       });
+    },
+    // ---- people (api/mock/people.ts) ----
+    "people.list": function () {
+      return this.people.list();
+    },
+    "people.get": function ({ id }) {
+      return this.people.get(id);
+    },
+    "people.save": function (p) {
+      return this.people.save(p);
+    },
+    "people.delete": function ({ id }) {
+      return this.people.delete(id);
+    },
+    "people.merge": function ({ keep, remove }) {
+      return this.people.merge(keep, remove);
+    },
+    "people.labelSpeaker": function (p) {
+      return this.people.labelSpeaker(p);
+    },
+    "people.unlabelSpeaker": function ({ meeting_id, speaker }) {
+      return this.people.unlabelSpeaker(meeting_id, speaker);
+    },
+    "people.suggestions": function () {
+      return this.people.suggestions();
     },
   };
 }

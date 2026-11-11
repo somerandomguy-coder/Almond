@@ -31,12 +31,14 @@ opus = "0.4"
 chrono = { version = "0.4.45", default-features = false, features = ["clock", "std"] }
 # chat: diacritic folding for keyword matching.
 unicode-normalization = "0.1.26"
+# people: voice prints (speaker embeddings) with the 3D-Speaker model; same build as almond-stt's.
+sherpa-onnx = { version = "2.0.1", optional = true, default-features = false, features = ["shared"] }
 
 [features]
 default = []
 # Native speech engines (see crates/almond-stt). The desktop app enables these; CI builds without.
 whisper = ["almond-stt/whisper"]
-sherpa = ["almond-stt/sherpa"]
+sherpa = ["almond-stt/sherpa", "dep:sherpa-onnx"]
 cuda = ["whisper", "almond-stt/cuda"]
 
 [dev-dependencies]

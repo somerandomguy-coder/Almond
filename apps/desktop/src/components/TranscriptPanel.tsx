@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import type { Segment } from "../gen/Segment";
 import { formatClock } from "../lib/text";
@@ -16,6 +16,7 @@ export function TranscriptPanel({
   live,
   focus,
   speakerName,
+  renderSpeaker,
   onSeek,
 }: {
   lines: TranscriptLine[];
@@ -23,6 +24,8 @@ export function TranscriptPanel({
   /** Segment idx to scroll to + highlight; `nonce` re-triggers the flash on repeated clicks. */
   focus: { idx: number; nonce: number } | null;
   speakerName: (id: string | null) => string;
+  /** Speaker chip (people: click to label); default: the name as text. */
+  renderSpeaker?: (id: string, colorClass: string) => ReactNode;
   onSeek: (ms: number) => void;
 }) {
   const { t } = useTranslation();
@@ -69,7 +72,7 @@ export function TranscriptPanel({
                 className={cx("rounded-xl px-3 py-2", focused && "flash ring-1 ring-accent/40")}
               >
                 <div className="mb-0.5 flex items-center gap-2 text-xs">
-                  <span className={cx("font-medium", colorFor(s.speaker))}>{speakerName(s.speaker)}</span>
+                  {renderSpeaker && s.speaker && final ? renderSpeaker(s.speaker, colorFor(s.speaker)) : <span className={cx("font-medium", colorFor(s.speaker))}>{speakerName(s.speaker)}</span>}
                   <button type="button" onClick={() => onSeek(s.t0_ms)} className="tabular-nums text-faint hover:text-accent">
                     {formatClock(s.t0_ms)}
                   </button>

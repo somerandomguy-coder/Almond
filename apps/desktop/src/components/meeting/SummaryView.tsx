@@ -7,11 +7,13 @@ import { errorMessage } from "../../api/errors";
 import { Kinds, Processors } from "../../api/types";
 import { body, latest, shortModel, verdictsByBullet, versions, worstLabel } from "../../lib/artifacts";
 import { CitationChip, VERDICT_STYLE, VerdictBadge } from "../citations";
+import { useSpeakerText } from "../../lib/people";
 import { Button, cx, Pill, SectionTitle } from "../ui";
 
 function SummaryBody({ summary, artifacts, testId }: { summary: Artifact; artifacts: Artifact[]; testId?: string }) {
   const s = body(summary, "summary");
   const verdicts = useMemo(() => verdictsByBullet(artifacts, summary.id), [artifacts, summary.id]);
+  const named = useSpeakerText();
   let flat = 0;
   return (
     <div className="flex flex-col gap-6" data-testid={testId}>
@@ -27,7 +29,7 @@ function SummaryBody({ summary, artifacts, testId }: { summary: Artifact; artifa
                 <li key={bi} className="flex items-start gap-2" data-verdict={label ?? undefined}>
                   <span className="mt-2.5 h-1 w-1 shrink-0 rounded-full bg-faint" />
                   <div className="min-w-0 flex-1">
-                    <span className={cx(label && VERDICT_STYLE[label].underline)}>{b.text}</span>
+                    <span className={cx(label && VERDICT_STYLE[label].underline)}>{named(b.text)}</span>
                     {b.cites.map((c, ci) => (
                       <CitationChip key={ci} span={c} />
                     ))}
@@ -157,6 +159,7 @@ export function SummaryView({ artifacts, meetingId, devices, transcriptId }: { a
 
 export function ActionItemsView({ artifacts }: { artifacts: Artifact[] }) {
   const { t } = useTranslation();
+  const named = useSpeakerText();
   const a = latest(artifacts, Kinds.actionItems);
   if (!a) return null;
   const items = body(a, "action_items").items;
@@ -170,7 +173,7 @@ export function ActionItemsView({ artifacts }: { artifacts: Artifact[] }) {
             <input type="checkbox" aria-label={it.text} className="mt-1 h-4 w-4 accent-[var(--accent)]" />
             <div className="min-w-0 flex-1">
               <p>
-                {it.text}
+                {named(it.text)}
                 {it.cites.map((c, k) => (
                   <CitationChip key={k} span={c} />
                 ))}
@@ -178,7 +181,7 @@ export function ActionItemsView({ artifacts }: { artifacts: Artifact[] }) {
               <p className="mt-0.5 flex flex-wrap gap-3 text-xs text-muted">
                 {it.owner && (
                   <span>
-                    {t("meeting.owner")}: {it.owner}
+                    {t("meeting.owner")}: {named(it.owner)}
                   </span>
                 )}
                 {it.due && (

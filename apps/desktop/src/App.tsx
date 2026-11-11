@@ -9,6 +9,8 @@ import { Cookbook } from "./screens/Cookbook";
 import { Devices } from "./screens/Devices";
 import { Home } from "./screens/Home";
 import { MeetingScreen } from "./screens/Meeting";
+import { People } from "./screens/People";
+import { PersonScreen } from "./screens/Person";
 import { Settings } from "./screens/Settings";
 import { AppStateProvider } from "./state/AppState";
 
@@ -18,6 +20,8 @@ export function AppRoutes() {
       <Route element={<Shell />}>
         <Route index element={<Home />} />
         <Route path="meeting/:id" element={<MeetingScreen />} />
+        <Route path="people" element={<People />} />
+        <Route path="people/:id" element={<PersonScreen />} />
         <Route path="devices" element={<Devices />} />
         <Route path="settings" element={<Settings />} />
         <Route path="cookbook" element={<Cookbook />} />

@@ -11,6 +11,7 @@ import { cx, Icon } from "./ui";
 const NAV = [
   { to: "/", key: "nav.home", icon: Icon.home, end: true },
   { to: "/cookbook", key: "recipes.nav", icon: Icon.sparkle, end: false },
+  { to: "/people", key: "people.nav", icon: Icon.people, end: false },
   { to: "/devices", key: "nav.devices", icon: Icon.sync, end: false },
   { to: "/settings", key: "nav.settings", icon: Icon.settings, end: false },
 ] as const;
