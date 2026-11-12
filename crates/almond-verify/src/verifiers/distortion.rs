@@ -272,6 +272,12 @@ fn features(w: &[(String, bool)]) -> Features {
     f
 }
 
+/// Folded content words of `text` (no function words, no hedge/quantifier/negation markers):
+/// what two passages must share to be about the same thing.
+pub(crate) fn content_words(text: &str) -> Vec<String> {
+    content(&words(text))
+}
+
 fn content(w: &[(String, bool)]) -> Vec<String> {
     let lx = &LEXICON;
     let markers: Vec<&str> = [

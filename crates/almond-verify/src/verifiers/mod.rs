@@ -10,6 +10,7 @@ pub mod distortion;
 pub mod entities;
 pub mod nli;
 pub mod numbers;
+pub mod revision;
 
 pub use calendar::CalendarVerifier;
 pub use citation::CitationExistsVerifier;
@@ -20,6 +21,7 @@ pub use distortion::DistortionVerifier;
 pub use entities::EntitiesVerifier;
 pub use nli::NliVerifier;
 pub use numbers::NumbersVerifier;
+pub use revision::RevisionVerifier;
 
 use almond_types::SpanRef;
 use almond_types::artifact::body::{Claim, Verdict, VerdictLabel};

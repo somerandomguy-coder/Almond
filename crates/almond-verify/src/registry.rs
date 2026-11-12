@@ -2,7 +2,7 @@
 
 use crate::verifiers::{
     CalendarVerifier, CitationExistsVerifier, DatesVerifier, DistortionVerifier, EntitiesVerifier,
-    NliVerifier, NumbersVerifier, VerifyConfig,
+    NliVerifier, NumbersVerifier, RevisionVerifier, VerifyConfig,
 };
 use almond_types::artifact::body::{Claim, Verdict};
 use almond_types::llm::LlmProvider;
@@ -48,6 +48,9 @@ impl VerifierRegistry {
             config: config.clone(),
         }));
         r.register(Arc::new(DistortionVerifier {
+            config: config.clone(),
+        }));
+        r.register(Arc::new(RevisionVerifier {
             config: config.clone(),
         }));
         #[cfg(feature = "datalog")]

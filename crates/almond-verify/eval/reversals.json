@@ -1,0 +1,69 @@
+{
+  "about": "Later-reversal fixtures for verify.revision: a decision or value is stated, then changed later in the same meeting. gold = hallucinated + type later_reversed when the bullet keeps the early version; controls are restated-unchanged, final decisions, and claims nothing later touches. Synthetic data.",
+  "meetings": [
+    {
+      "id": "r1-launch-vi",
+      "title": "Họp lịch ra mắt app",
+      "start": "2026-11-10T09:00:00+07:00",
+      "tz_offset_min": 420,
+      "duration_min": 90,
+      "attendees": [
+        {"name": "Nam", "email": "nam@almond.dev", "response": "accepted", "is_self": true},
+        {"name": "Lan", "email": "lan@almond.dev", "response": "accepted"},
+        {"name": "Minh", "email": "minh@almond.dev", "response": "accepted"}
+      ],
+      "speakers": {"me": "Nam", "S1": "Lan", "S2": "Minh"},
+      "transcript": [
+        ["me", "vi", "Chào mọi người, hôm nay bàn lịch ra mắt app và ngân sách quảng cáo."],
+        ["S1", "vi", "Mình chốt ra mắt app vào tháng 12 nhé."],
+        ["S2", "vi", "Ngân sách quảng cáo cho đợt ra mắt là 100 triệu đồng."],
+        ["me", "vi", "Bên thiết kế sẽ gửi logo mới trước thứ Sáu."],
+        ["S1", "vi", "Còn phần kiểm thử thì Minh phụ trách."],
+        ["S2", "vi", "Chị Hoa bên vận hành sẽ lo tên miền mới."],
+        ["S2", "vi", "À khoan, tính lại thì ra mắt app tháng 12 không kịp, mình dời sang tháng 1 đi."],
+        ["me", "vi", "Ừ, vậy ngân sách quảng cáo giảm xuống 80 triệu đồng thôi."],
+        ["S1", "vi", "Ok, logo mới vẫn gửi trước thứ Sáu nha."]
+      ],
+      "bullets": [
+        {"text": "Ra mắt app vào tháng 12.", "cites": [1], "gold": "hallucinated", "type": "later_reversed"},
+        {"text": "Ngân sách quảng cáo cho đợt ra mắt là 100 triệu đồng.", "cites": [2], "gold": "hallucinated", "type": "later_reversed"},
+        {"text": "Bên thiết kế gửi logo mới trước thứ Sáu.", "cites": [3], "gold": "ok"},
+        {"text": "Minh phụ trách kiểm thử.", "cites": [4], "gold": "ok"},
+        {"text": "Ra mắt app dời sang tháng 1.", "cites": [6], "gold": "ok"},
+        {"text": "Ngân sách quảng cáo giảm xuống 80 triệu đồng.", "cites": [7], "gold": "ok"}
+      ]
+    },
+    {
+      "id": "r2-relaunch-en",
+      "title": "Website relaunch sync",
+      "start": "2026-11-11T15:00:00+07:00",
+      "tz_offset_min": 420,
+      "duration_min": 60,
+      "attendees": [
+        {"name": "Tom", "email": "tom@almond.dev", "response": "accepted", "is_self": true},
+        {"name": "Sarah Lee", "email": "sarah.lee@almond.dev", "response": "accepted"},
+        {"name": "David Chen", "email": "david.chen@almond.dev", "response": "accepted"}
+      ],
+      "speakers": {"me": "Tom", "S1": "Sarah Lee", "S2": "David Chen"},
+      "transcript": [
+        ["me", "en", "Quick sync on the website relaunch and the vendor contract."],
+        ["S1", "en", "Let's launch the new website on December 3."],
+        ["S2", "en", "The vendor contract is 40,000 dollars per year."],
+        ["me", "en", "Sarah will write the press release by Friday."],
+        ["S2", "en", "We should also hire a contractor for the migration."],
+        ["S1", "en", "The analytics dashboard stays on the old domain for now."],
+        ["S1", "en", "Actually, scratch the December 3 date, the CMS migration isn't done. Let's launch the new website on January 14 instead."],
+        ["S2", "en", "And on the hiring, let's not hire a contractor for the migration, we'll do it in house."],
+        ["me", "en", "Fine. The press release is still due Friday."]
+      ],
+      "bullets": [
+        {"text": "The new website launches on December 3.", "cites": [1], "gold": "hallucinated", "type": "later_reversed"},
+        {"text": "The team will hire a contractor for the migration.", "cites": [4], "gold": "hallucinated", "type": "later_reversed"},
+        {"text": "The vendor contract is $40,000 per year.", "cites": [2], "gold": "ok"},
+        {"text": "Sarah will write the press release by Friday.", "cites": [3], "gold": "ok"},
+        {"text": "The analytics dashboard stays on the old domain for now.", "cites": [5], "gold": "ok"},
+        {"text": "The website launch moved to January 14 because the CMS migration isn't done.", "cites": [6], "gold": "ok"}
+      ]
+    }
+  ]
+}

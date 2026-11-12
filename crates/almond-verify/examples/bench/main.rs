@@ -284,6 +284,20 @@ async fn main() {
                 .iter()
                 .filter(|v| cids.contains(&v.claim_id.as_str()))
             {
+                if let Some(t) = v.trace.as_ref()
+                    && t.get("rule").and_then(|r| r.as_str()) == Some("revision.v1")
+                {
+                    rules.push(format!(
+                        "revision:seg{}:{}:{}",
+                        t["later_segment"],
+                        t["strong_markers"],
+                        if t["changed"].is_null() {
+                            "marker_only"
+                        } else {
+                            "value_changed"
+                        }
+                    ));
+                }
                 if let Some(f) = v
                     .trace
                     .as_ref()

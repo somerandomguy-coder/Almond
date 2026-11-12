@@ -390,6 +390,59 @@ Remaining personal false alarms:
 lexicon *after* seeing that it caused 11 of 11 synthetic distortion false alarms. These numbers are
 therefore optimistic until re-measured on new recordings.
 
+### 5.2 `verify.revision`: decisions changed later in the meeting
+
+**The gap.** Every verifier checks a claim only against the segments it cites. Example:
+
+- Minute 10: "yes, launch in December".
+- Minute 90: "no, push it to January".
+
+A summary that keeps "December" and cites minute 10 passes every check. The benchmark had no such
+cases.
+
+**How the new verifier works.** It is deterministic and needs no LLM.
+
+1. It indexes the transcript once.
+2. For each claim, it keeps segments that come *after* the last cited segment and share at least 2
+   content words with the claim, covering at least 30% of them. It looks at the 5 closest.
+3. It flags:
+   - A **changed date or amount together with a change word** → `contradicted`.
+     - The last value of that kind in the passage is compared, so "tháng 12 không kịp, dời sang
+       tháng 1" counts.
+     - Strong change words: hoãn, dời, đổi, khoan, thay vì, postpone, cancel, instead, actually,
+       let's not…
+     - Weak change words: không, not, thôi, maybe.
+   - A **strong change word alone** on a close topic match (≥ 50%) → `needs_review`.
+
+**Tests.** The new fixtures `crates/almond-verify/eval/reversals.json` (`tests/revision.rs`)
+contain:
+
+| | Vietnamese | English | Total |
+|---|---|---|---|
+| reversals (a date, an amount, a hiring decision) | 2 | 2 | 4 |
+| controls (restated unchanged, final decisions, untouched claims) | 4 | 4 | 8 |
+
+Results: all 4 reversals are caught; no control and no bullet in the old fixtures is flagged.
+
+**False alarms on the benchmark's correct notes** (cache re-score, 0 LLM calls):
+
+| set | false alarms |
+|---|---|
+| synthetic | 0 of 115 |
+| personal | 1 unique passage ("thay vì" plus a changed value), repeated in 3 variants: 15% → 17% |
+
+**What was tightened after the first run.** The first version also flagged any different number
+later on the same topic, even without a change word: "lost 2 votes to 3" followed later by "the
+motion is carried 3 votes to 2". That caused 6 of its 7 false alarms. It now requires a change
+word. "thôi" became a weak marker because it is also a filler ("vậy thôi"). Both changes are
+in-sample.
+
+**Limits.**
+
+- A reversal phrased without any listed change word is missed, e.g. "January works better for
+  everyone".
+- Real recordings with reversals are still needed to measure recall.
+
 ## 6. What was cut, hard or unreliable
 
 - **Cut (GPU load):**
