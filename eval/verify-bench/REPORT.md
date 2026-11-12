@@ -336,6 +336,60 @@ Not recommended:
 Cost of the proposal: one judge call per claim, about 1.3 s on gemma4:12b with this GPU (about
 10–13 s for a 10-bullet summary), plus under 50 ms of symbolic and NLI work.
 
+### 5.1 Applied (recommendations 1–3) and re-measured
+
+Applied in `crates/almond-verify`:
+
+- `verify.nli`: fuzzy quote match (≥ 80% of a 3+ word quote's folded words) and neighbour support
+  accepted as `supported`, capped at 0.6 confidence.
+- New `verify.distortion` (plain Rust, no LLM). It flags:
+  - a dropped hedge;
+  - a changed quantifier;
+  - an overgeneralisation;
+  - something planned that is reported as done;
+  - a flipped negation, only when the claim aligns strongly with the source.
+- `verify.entities` / `verify.consistency`: titled and partial names match their speaker
+  ("Cr Okafor" ~ "Cr David Okafor"). Group owners (staff, team, nhóm, mọi người) are no longer
+  "not an attendee".
+- The job order now runs `verify.all` after the title, action items and notes.
+
+Re-scored with `examples/bench`. Every judge answer came from the run's cache (0 new LLM calls), so
+only the wrapper rules and the symbolic verifiers changed:
+
+| Almond current, ≠ supported | synthetic R / FA | personal R / FA |
+|---|---|---|
+| before | 86% / 19% | 65% / 24% |
+| **after** | **89% / 3%** | **68% / 15%** |
+
+Recall on synthetic, by error type:
+
+| type | before | after |
+|---|---|---|
+| quantifier | 50% | 100% |
+| hedge_drop | 42% | 58% |
+| temporal | 92% | 100% |
+
+Recall on personal, by error type:
+
+| type | before | after |
+|---|---|---|
+| quantifier | 14% | 43% |
+| overgeneralise | 82% | 100% |
+
+Small losses on personal: hedge_add 36% → 24% and number 84% → 79%. These are claims the old wrapper
+flagged only because of its strictness.
+
+Remaining personal false alarms:
+
+| raised by | count | detail |
+|---|---|---|
+| `verify.nli` | 13 | |
+| `verify.distortion` | 3 | maybe, chắc là, one quantifier |
+
+**In-sample caveat:** opinion framing ("I think", "I believe", "nghĩ là") was removed from the hedge
+lexicon *after* seeing that it caused 11 of 11 synthetic distortion false alarms. These numbers are
+therefore optimistic until re-measured on new recordings.
+
 ## 6. What was cut, hard or unreliable
 
 - **Cut (GPU load):**

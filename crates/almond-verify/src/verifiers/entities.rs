@@ -7,7 +7,7 @@
 use super::numbers::capitalize;
 use super::{AtomStatus, VerifyConfig, label_for, verdict};
 use crate::evidence::{EvidenceIndex, mentions};
-use crate::names::{extract, key};
+use crate::names::{extract, key, same_person};
 use almond_types::artifact::body::{Claim, Verdict};
 use almond_types::verify::{Verifier, VerifierDescriptor, VerifyContext};
 use async_trait::async_trait;
@@ -74,9 +74,11 @@ impl Verifier for EntitiesVerifier {
             for n in &names {
                 let in_text = ev.iter().find(|r| mentions(&r.text, &n.surface));
                 let as_speaker = ev.iter().find(|r| {
-                    r.speaker
-                        .as_deref()
-                        .is_some_and(|s| key(s) == key(&n.surface) || mentions(s, &n.surface))
+                    r.speaker.as_deref().is_some_and(|s| {
+                        key(s) == key(&n.surface)
+                            || mentions(s, &n.surface)
+                            || same_person(s, &n.surface)
+                    })
                 });
                 if let Some(r) = in_text {
                     used.push(r.span.clone());
@@ -93,6 +95,7 @@ impl Verifier for EntitiesVerifier {
                         .map(|m| m.surface)
                         .filter(|m| {
                             key(m) != key(&n.surface)
+                                && !same_person(m, &n.surface)
                                 && idx
                                     .people
                                     .iter()
@@ -118,18 +121,22 @@ impl Verifier for EntitiesVerifier {
                 }
                 let others: Vec<&String> = ev_people
                     .iter()
-                    .filter(|p| key(p) != key(&n.surface) && !mentions(p, &n.surface))
+                    .filter(|p| {
+                        key(p) != key(&n.surface)
+                            && !mentions(p, &n.surface)
+                            && !same_person(p, &n.surface)
+                    })
                     .filter(|p| {
                         idx.people
                             .iter()
                             .any(|k| mentions(k, p) || key(k) == key(p))
                     })
                     .collect();
-                let is_attendee = idx
-                    .attendees
-                    .iter()
-                    .chain(idx.people.iter())
-                    .any(|a| mentions(a, &n.surface) || key(a) == key(&n.surface));
+                let is_attendee = idx.attendees.iter().chain(idx.people.iter()).any(|a| {
+                    mentions(a, &n.surface)
+                        || key(a) == key(&n.surface)
+                        || same_person(a, &n.surface)
+                });
                 let elsewhere = all.iter().find(|r| mentions(&r.text, &n.surface));
                 // Only speakers / attendees are treated as people for the "different person" rule;
                 // other capitalized names (products, places) just need to be in the evidence.

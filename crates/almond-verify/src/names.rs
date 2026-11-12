@@ -464,6 +464,92 @@ pub fn key(name: &str) -> String {
     fold(name).split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
+/// Titles dropped when comparing two names ("Cr Okafor" vs "Cr David Okafor", "anh Minh" vs
+/// "Minh"); folded.
+const TITLES: &[&str] = &[
+    "anh",
+    "chi",
+    "em",
+    "ong",
+    "ba",
+    "co",
+    "chu",
+    "ban",
+    "sep",
+    "mr",
+    "ms",
+    "mrs",
+    "dr",
+    "cr",
+    "cllr",
+    "councillor",
+    "mayor",
+    "prof",
+    "sir",
+    "madam",
+    "mx",
+];
+
+/// Folded name words without titles.
+fn core_words(name: &str) -> Vec<String> {
+    crate::text::folded_words(name)
+        .into_iter()
+        .filter(|w| !TITLES.contains(&w.as_str()))
+        .collect()
+}
+
+/// Same person, allowing titles and partial names: every non-title word of the shorter name is
+/// in the longer one ("Cr Okafor" ~ "Cr David Okafor", "Minh" ~ "Nguyễn Văn Minh").
+pub fn same_person(a: &str, b: &str) -> bool {
+    let (a, b) = (core_words(a), core_words(b));
+    let (short, long) = if a.len() <= b.len() { (a, b) } else { (b, a) };
+    !short.is_empty() && short.iter().all(|w| long.contains(w))
+}
+
+/// Folded group words used as owners: they are not people, so "not an attendee" doesn't apply.
+const GROUPS: &[&str] = &[
+    "staff",
+    "team",
+    "everyone",
+    "all",
+    "officers",
+    "officer",
+    "council",
+    "management",
+    "committee",
+    "board",
+    "we",
+    "us",
+    "they",
+    "nhom",
+    "moi nguoi",
+    "ca nhom",
+    "doi",
+    "ban",
+    "phong",
+    "cong ty",
+    "chung ta",
+    "chung toi",
+    "ho",
+    "tat ca",
+];
+
+/// "Staff", "the team", "nhóm", "mọi người": a group, not a named person.
+pub fn is_group(name: &str) -> bool {
+    let w: Vec<String> = crate::text::folded_words(name)
+        .into_iter()
+        .filter(|w| !matches!(w.as_str(), "the" | "our" | "cac" | "nhung"))
+        .collect();
+    let k = w.join(" ");
+    !k.is_empty()
+        && (GROUPS.contains(&k.as_str())
+            || w.first().is_some_and(|f| {
+                matches!(f.as_str(), "nhom" | "doi" | "phong" | "ban") && w.len() <= 3
+            })
+            || w.last()
+                .is_some_and(|l| matches!(l.as_str(), "team" | "staff" | "committee")))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -471,6 +557,32 @@ mod tests {
     fn names(s: &str, known: &[&str]) -> Vec<String> {
         let k: Vec<String> = known.iter().map(|s| s.to_string()).collect();
         extract(s, &k).into_iter().map(|n| n.surface).collect()
+    }
+
+    #[test]
+    fn same_person_ignores_titles_and_partial_names() {
+        assert!(same_person("Cr Okafor", "Cr David Okafor"));
+        assert!(same_person("anh Minh", "Nguyễn Văn Minh"));
+        assert!(same_person("MINH", "Minh"));
+        assert!(!same_person("Cr Okafor", "Mayor Helen Nguyen"));
+        assert!(!same_person("Mr", "Mr Smith"));
+    }
+
+    #[test]
+    fn groups() {
+        for g in [
+            "Staff",
+            "the team",
+            "Nhóm",
+            "mọi người",
+            "Nhóm marketing",
+            "Sales team",
+        ] {
+            assert!(is_group(g), "{g}");
+        }
+        for p in ["Lan", "Cr Okafor", "Minh"] {
+            assert!(!is_group(p), "{p}");
+        }
     }
 
     #[test]

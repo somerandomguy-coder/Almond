@@ -183,8 +183,16 @@ impl Verifier for ConsistencyVerifier {
                 if pred == "owner"
                     && have_attendees
                     && let Literal::Person { name } = &tr.o
+                    && !names::is_group(name)
                 {
-                    p.owner.push((c.id.clone(), s.clone(), names::key(name)));
+                    // A titled or partial name of an attendee counts as that attendee.
+                    let w = idx
+                        .people
+                        .iter()
+                        .find(|a| names::same_person(a, name))
+                        .map(|a| names::key(a))
+                        .unwrap_or_else(|| names::key(name));
+                    p.owner.push((c.id.clone(), s.clone(), w));
                 }
                 if pred == "due"
                     && let Literal::Date { value, .. } = &tr.o

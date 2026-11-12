@@ -88,10 +88,34 @@ fn words(s: &str) -> Vec<String> {
         .collect()
 }
 
+/// Is the judge's quote in `text`? Exact (folded) word sequence, or — because judges tidy up
+/// ALL-CAPS, unpunctuated ASR text when they copy it — at least 80% of a 3+ word quote's words
+/// found in the segment.
 fn quote_in(quote: &str, text: &str) -> bool {
     let q = words(quote);
-    !q.is_empty() && crate::text::contains_seq(&words(text), &q)
+    if q.is_empty() {
+        return false;
+    }
+    let t = words(text);
+    if crate::text::contains_seq(&t, &q) {
+        return true;
+    }
+    if q.len() < 3 {
+        return false;
+    }
+    let mut pool = t;
+    let mut hit = 0usize;
+    for w in &q {
+        if let Some(i) = pool.iter().position(|x| x == w) {
+            pool.swap_remove(i);
+            hit += 1;
+        }
+    }
+    hit * 5 >= q.len() * 4
 }
+
+/// Confidence cap when the support is only in an uncited neighbouring segment.
+const NEIGHBOUR_CONF: f32 = 0.6;
 
 fn render(r: &ResolvedSpan) -> String {
     match &r.speaker {
@@ -190,10 +214,12 @@ impl Verifier for NliVerifier {
                     0.4,
                     " (judge's quote was not found in the evidence)",
                 ),
+                // Summaries often cite the segment next to the one that says it (ASR splits
+                // sentences): accept, with lower confidence.
                 "entailed" if in_cited.is_none() => (
-                    VerdictLabel::NeedsReview,
-                    0.5,
-                    " (support is only in an uncited neighbouring segment)",
+                    VerdictLabel::Supported,
+                    conf.min(NEIGHBOUR_CONF),
+                    " (found in a neighbouring segment, not the cited one)",
                 ),
                 "entailed" => (VerdictLabel::Supported, conf, ""),
                 "contradicted" => (VerdictLabel::Contradicted, conf, ""),
@@ -246,5 +272,16 @@ mod tests {
             "Ngân sách marketing là 200 triệu đồng."
         ));
         assert!(!quote_in("", "anything"));
+    }
+
+    #[test]
+    fn quote_matching_tolerates_tidied_asr_text() {
+        // The judge adds punctuation, fixes case and drops a filler word.
+        let asr = "THÌ À NGÂN SÁCH MARKETING LÀ HAI TRĂM TRIỆU ĐỒNG NHA";
+        assert!(quote_in("Ngân sách marketing là hai trăm triệu đồng.", asr));
+        assert!(quote_in("ngân sách là hai trăm triệu đồng", asr));
+        // ...but not a different claim that shares a few words.
+        assert!(!quote_in("ngân sách sales là ba trăm triệu USD", asr));
+        assert!(!quote_in("ba trăm", asr));
     }
 }

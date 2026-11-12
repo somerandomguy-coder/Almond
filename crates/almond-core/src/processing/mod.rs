@@ -93,16 +93,18 @@ impl State {
                 // LLM calls on a shared GPU can be slow; renew often, expire after 10 min silence.
                 lease_ms: 10 * 60_000,
                 retry_backoff: Duration::from_secs(3),
-                // Transcript first, then summary and its fact-check, title, action items, notes.
+                // Transcript first, then summary, title, action items, notes; the fact-check
+                // (one LLM call per claim, the slowest step) runs last so it never delays what
+                // the user reads first. Claim extraction is rule-based and instant.
                 policy: PlanPolicy {
                     priorities: [
                         ("transcribe.local", 5),
                         ("summarize.llm", 4),
                         ("verify.extract_claims", 4),
-                        ("verify.all", 4),
                         ("title.llm", 3),
                         ("action_items.llm", 2),
                         ("enhance_notes.llm", 1),
+                        ("verify.all", 0),
                     ]
                     .into_iter()
                     .map(|(k, v)| (k.to_string(), v))

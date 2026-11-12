@@ -278,10 +278,32 @@ async fn main() {
                 .map(|c| c.id.as_str())
                 .collect();
             let mut per: BTreeMap<String, (VerdictLabel, f32)> = BTreeMap::new();
+            // Which distortion rules fired (hedge_dropped, quantifier_changed, ...).
+            let mut rules: Vec<String> = vec![];
             for v in verdicts
                 .iter()
                 .filter(|v| cids.contains(&v.claim_id.as_str()))
             {
+                if let Some(f) = v
+                    .trace
+                    .as_ref()
+                    .and_then(|t| t.get("findings"))
+                    .and_then(|f| f.as_array())
+                {
+                    rules.extend(f.iter().filter_map(|x| {
+                        let r = x.get("rule")?.as_str()?;
+                        Some(match x.get("source").and_then(|s| s.as_array()) {
+                            Some(s) if r == "hedge_dropped" => format!(
+                                "{r}:{}",
+                                s.iter()
+                                    .filter_map(|w| w.as_str())
+                                    .collect::<Vec<_>>()
+                                    .join("+")
+                            ),
+                            _ => r.to_string(),
+                        })
+                    }));
+                }
                 let e = per
                     .entry(v.verifier.clone())
                     .or_insert((v.label, v.confidence));
@@ -311,6 +333,7 @@ async fn main() {
                 "confidence": conf,
                 "score": score(a, conf),
                 "fired": fired,
+                "distortion_rules": rules,
                 "claims": cids.len(),
                 "verifiers": per.iter().map(|(k, (l, c))| (k.clone(), json!({"label": label(*l), "confidence": c}))).collect::<serde_json::Map<_, _>>(),
                 "variant_seconds": el,

@@ -6,6 +6,7 @@ pub mod citation;
 #[cfg(feature = "datalog")]
 pub mod consistency;
 pub mod dates;
+pub mod distortion;
 pub mod entities;
 pub mod nli;
 pub mod numbers;
@@ -15,6 +16,7 @@ pub use citation::CitationExistsVerifier;
 #[cfg(feature = "datalog")]
 pub use consistency::ConsistencyVerifier;
 pub use dates::DatesVerifier;
+pub use distortion::DistortionVerifier;
 pub use entities::EntitiesVerifier;
 pub use nli::NliVerifier;
 pub use numbers::NumbersVerifier;
