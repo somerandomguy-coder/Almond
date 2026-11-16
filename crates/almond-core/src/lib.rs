@@ -72,6 +72,10 @@ pub struct CoreConfig {
     /// Probe the hardware (NVIDIA GPU) for capabilities. Tests turn it off so a core only has the
     /// capabilities they give it, whatever machine runs the test.
     pub detect_gpu: bool,
+    /// Start a local `ollama serve` at startup when this device's Ollama is local and not
+    /// running. Off by default (tests, CLIs); the desktop app turns it on so it works from a
+    /// Start-menu click without starting Ollama first.
+    pub start_ollama: bool,
 }
 
 impl CoreConfig {
@@ -99,6 +103,7 @@ impl CoreConfig {
                 .unwrap_or_else(|| "http://127.0.0.1:11434".into()),
             network: true,
             detect_gpu: true,
+            start_ollama: false,
         }
     }
 }

@@ -43,7 +43,9 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
             let data_dir = app.path().app_data_dir()?;
-            let cfg = CoreConfig::new(data_dir, device_name());
+            let mut cfg = CoreConfig::new(data_dir, device_name());
+            // Opened from the Start menu: start Ollama too if it isn't running.
+            cfg.start_ollama = true;
             let api = tauri::async_runtime::block_on(Core::open(cfg))?;
 
             // forward core notifications to the UI

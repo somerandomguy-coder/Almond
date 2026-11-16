@@ -15,6 +15,7 @@ mod actions;
 mod api;
 pub mod caps;
 mod jobloop;
+mod ollama_boot;
 pub(crate) mod offload;
 mod procs;
 mod stubs;
@@ -275,6 +276,7 @@ pub(crate) fn start(core: Arc<Core>) {
     core.processing
         .runner
         .set_defer(Some(offload::defer_fn(Arc::downgrade(&core))));
+    ollama_boot::ensure_running(&core);
     jobloop::start(&core);
 }
 

@@ -74,12 +74,16 @@ pub struct StdioRpc {
 impl StdioRpc {
     /// Spawn `program args...`. The child is killed when this value is dropped.
     pub fn spawn(program: &str, args: &[String]) -> Result<Arc<Self>> {
-        let mut child = Command::new(program)
-            .args(args)
+        let mut cmd = Command::new(program);
+        cmd.args(args)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::inherit())
-            .kill_on_drop(true)
+            .kill_on_drop(true);
+        // The installed app has no console; don't flash one for the child.
+        #[cfg(windows)]
+        cmd.creation_flags(0x0800_0000); // CREATE_NO_WINDOW
+        let mut child = cmd
             .spawn()
             .map_err(|e| Error::Other(format!("spawn {program}: {e}")))?;
         let stdin = child.stdin.take().expect("piped stdin");
