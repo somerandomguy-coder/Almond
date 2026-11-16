@@ -227,6 +227,12 @@ export const Icon = {
       <path d="M7 5v14l11-7z" fill="currentColor" />
     </svg>
   ),
+  copy: (p: SVGProps<SVGSVGElement>) => (
+    <svg {...base(p)}>
+      <rect x="9" y="9" width="11" height="11" rx="2" />
+      <path d="M5 15V6a2 2 0 0 1 2-2h8" />
+    </svg>
+  ),
   check: (p: SVGProps<SVGSVGElement>) => (
     <svg {...base(p)}>
       <path d="m5 12.5 4.5 4.5L19 7" />

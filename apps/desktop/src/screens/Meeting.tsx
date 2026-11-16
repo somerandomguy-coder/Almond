@@ -24,7 +24,9 @@ import { RecipesPanel } from "../components/recipes/RecipesPanel";
 import { TranscriptPanel, type TranscriptLine } from "../components/TranscriptPanel";
 import { SpeakerChip } from "../components/people/SpeakerChip";
 import { useSpeakerPeople } from "../components/people/useSpeakerPeople";
-import { SpeakerNamesContext } from "../lib/people";
+import { nameSpeakersInText, SpeakerNamesContext } from "../lib/people";
+import { actionItemsMarkdown, enhancedMarkdown, meetingMarkdown, summaryMarkdown, transcriptText, type TranscriptCopyOptions } from "../lib/copyText";
+import { CopyButton } from "../components/CopyButton";
 import { JUMP_EVENT } from "../components/Shell";
 import { Button, cx, ErrorNote, Icon, Loading, Spinner } from "../components/ui";
 
@@ -247,6 +249,28 @@ function MeetingView({ detail }: { detail: MeetingDetail }) {
   const ev = detail.calendar_event;
   const leftTab: Exclude<Tab, "transcript"> = tab === "transcript" ? "notes" : tab;
 
+  // ---- copy as text ----
+  const named = (text: string) => nameSpeakersInText(text, people.names);
+  const segments = lines.map((l) => l.segment);
+  const copyTranscript = (opts: TranscriptCopyOptions) => () => transcriptText(segments, speakerName, opts);
+  const enhancedText = () => (enhanced ? enhancedMarkdown(body(enhanced, "enhanced_notes"), named) : "");
+  const myNotesText = () => notesDoc?.text.trim() ?? "";
+  const copyAll = () => {
+    const summaryArt = latest(artifacts, Kinds.summary);
+    const actionsArt = latest(artifacts, Kinds.actionItems);
+    return meetingMarkdown({
+      title,
+      when: f.dateTime(meeting.started_at),
+      sections: [
+        { heading: t("copy.sectionSummary"), text: summaryArt ? summaryMarkdown(body(summaryArt, "summary"), named) : "" },
+        { heading: t("copy.sectionActions"), text: actionsArt ? actionItemsMarkdown(body(actionsArt, "action_items").items, named, { due: t("copy.due") }) : "" },
+        { heading: t("copy.sectionEnhanced"), text: enhancedText() },
+        { heading: t("copy.sectionNotes"), text: myNotesText() },
+        { heading: t("copy.sectionTranscript"), text: copyTranscript({ speakers: true, timestamps: false })() },
+      ],
+    });
+  };
+
   const tabs: { id: Tab; label: string; mobileOnly?: boolean }[] = [
     { id: "notes", label: t("meeting.tabs.notes") },
     { id: "summary", label: t("meeting.tabs.summary") },
@@ -310,6 +334,11 @@ function MeetingView({ detail }: { detail: MeetingDetail }) {
                 </Button>
               )}
               {!isRecording && (
+                <span title={t("copy.allHint")}>
+                  <CopyButton text={copyAll} label={t("copy.all")} testId="copy-all" />
+                </span>
+              )}
+              {!isRecording && (
                 <Button variant="ghost" onClick={del} disabled={busy} title={t("meeting.delete")} aria-label={t("meeting.delete")}>
                   <Icon.trash width={16} height={16} />
                 </Button>
@@ -344,7 +373,8 @@ function MeetingView({ detail }: { detail: MeetingDetail }) {
               <JobsList jobs={[...jobs.values()]} onCancel={cancelJobs} />
               {leftTab === "notes" && (
                 <>
-                  {enhanced && (
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                  {enhanced ? (
                     <div className="inline-flex w-fit rounded-full border border-line bg-surface p-0.5 text-sm" role="group">
                       {(["enhanced", "mine"] as const).map((v) => (
                         <button
@@ -358,7 +388,11 @@ function MeetingView({ detail }: { detail: MeetingDetail }) {
                         </button>
                       ))}
                     </div>
+                  ) : (
+                    <span />
                   )}
+                  <CopyButton text={enhanced && notesView === "enhanced" ? enhancedText : myNotesText} label={t("copy.notes")} testId="copy-notes" />
+                  </div>
                   {enhanced && notesView === "enhanced" ? (
                     <EnhancedNotesView artifact={enhanced} />
                   ) : notesDoc ? (
@@ -395,10 +429,23 @@ function MeetingView({ detail }: { detail: MeetingDetail }) {
 
           <aside className={cx("min-h-0 flex-col border-line bg-bg lg:border-l", tab === "transcript" ? "flex" : "hidden lg:flex")} aria-label={t("meeting.tabs.transcript")}>
             <div className="flex flex-col gap-2 border-b border-line p-3">
-              <p className="flex items-center gap-2 text-xs font-semibold tracking-wider text-muted uppercase">
-                {isRecording && <span className="rec-dot h-1.5 w-1.5 rounded-full bg-rec" />}
-                {isRecording ? t("meeting.transcriptLive") : t("meeting.tabs.transcript")}
-              </p>
+              <div className="flex items-center justify-between gap-2">
+                <p className="flex items-center gap-2 text-xs font-semibold tracking-wider text-muted uppercase">
+                  {isRecording && <span className="rec-dot h-1.5 w-1.5 rounded-full bg-rec" />}
+                  {isRecording ? t("meeting.transcriptLive") : t("meeting.tabs.transcript")}
+                </p>
+                {lines.length > 0 && (
+                  <CopyButton
+                    text={copyTranscript({ speakers: true, timestamps: false })}
+                    label={t("copy.transcript")}
+                    testId="copy-transcript"
+                    options={[
+                      { label: t("copy.textOnly"), text: copyTranscript({ speakers: false, timestamps: false }) },
+                      { label: t("copy.withTimestamps"), text: copyTranscript({ speakers: true, timestamps: true }) },
+                    ]}
+                  />
+                )}
+              </div>
               {!isRecording && lines.length > 0 && <AudioBar positionMs={audioPos} durationMs={duration} onSeek={setAudioPos} available={meeting.audio.length > 0} src={audioSrc} />}
               {!isRecording && lines.length > 0 && (
                 <AudioControls meetingId={id} hasAudio={meeting.audio.length > 0} hasTranscript={!!transcriptArt} onDeleted={() => setAudioSrc(null)} />

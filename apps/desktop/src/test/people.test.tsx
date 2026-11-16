@@ -21,8 +21,11 @@ const transcript = () => screen.getByTestId("transcript");
 describe("speaker labels", () => {
   it("shows a voice suggestion dimmed and confirms it with the tick", async () => {
     await openQ4();
-    const chips = await within(transcript()).findAllByRole("button", { name: "David Kim" });
-    expect(chips[0]).toHaveAttribute("data-suggested", "true");
+    // The voice suggestion arrives after the transcript renders: wait for it.
+    await waitFor(async () => {
+      const chips = await within(transcript()).findAllByRole("button", { name: "David Kim" });
+      expect(chips[0]).toHaveAttribute("data-suggested", "true");
+    });
     // "me" and Lan are confirmed
     expect(within(transcript()).getAllByRole("button", { name: "Trần Lan" })[0]).not.toHaveAttribute("data-suggested");
     expect(within(transcript()).getAllByRole("button", { name: "Nam Nguyễn" }).length).toBeGreaterThan(0);

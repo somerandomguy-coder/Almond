@@ -9,6 +9,8 @@ import { body, latest, shortModel, verdictsByBullet, versions, worstLabel } from
 import { CitationChip, VERDICT_STYLE, VerdictBadge } from "../citations";
 import { useSpeakerText } from "../../lib/people";
 import { Button, cx, Pill, SectionTitle } from "../ui";
+import { CopyButton } from "../CopyButton";
+import { actionItemsMarkdown, summaryMarkdown } from "../../lib/copyText";
 
 function SummaryBody({ summary, artifacts, testId }: { summary: Artifact; artifacts: Artifact[]; testId?: string }) {
   const s = body(summary, "summary");
@@ -62,6 +64,7 @@ export function SummaryView({ artifacts, meetingId, devices, transcriptId }: { a
   const [compareTo, setCompareTo] = useState<string | null>(null);
   const [rerunModel, setRerunModel] = useState("qwen3.5:9b");
   const [msg, setMsg] = useState<string | null>(null);
+  const named = useSpeakerText();
 
   if (!newest) return <p className="text-sm text-muted">{t("meeting.summaryNone")}</p>;
   const current = all.find((a) => a.id === selected) ?? newest;
@@ -124,6 +127,7 @@ export function SummaryView({ artifacts, meetingId, devices, transcriptId }: { a
           </label>
         )}
         <div className="ml-auto flex items-center gap-2">
+          <CopyButton text={() => summaryMarkdown(body(current, "summary"), named)} label={t("copy.summary")} testId="copy-summary" />
           <select aria-label={t("meeting.rerunWith")} value={rerunModel} onChange={(e) => setRerunModel(e.target.value)} className="rounded-full border border-line bg-surface px-3 py-1.5 text-sm">
             <option value="qwen3.5:9b">qwen3.5:9b</option>
             <option value="gemma4:e4b">gemma4:e4b</option>
@@ -166,7 +170,10 @@ export function ActionItemsView({ artifacts }: { artifacts: Artifact[] }) {
   if (!items.length) return null;
   return (
     <section>
-      <SectionTitle>{t("meeting.actionItems")}</SectionTitle>
+      <div className="flex items-center justify-between gap-2">
+        <SectionTitle>{t("meeting.actionItems")}</SectionTitle>
+        <CopyButton text={() => actionItemsMarkdown(items, named, { due: t("copy.due") })} label={t("copy.actionItems")} testId="copy-actions" />
+      </div>
       <ul className="flex flex-col gap-2">
         {items.map((it, i) => (
           <li key={i} className="flex items-start gap-3 rounded-xl border border-line bg-surface p-3">
