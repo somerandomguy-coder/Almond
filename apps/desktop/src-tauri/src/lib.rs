@@ -23,6 +23,24 @@ fn device_name() -> String {
         .unwrap_or_else(|| format!("Almond ({})", std::env::consts::OS))
 }
 
+/// Where meetings live: `ALMOND_DATA_DIR`, else `~/.almond/data` on desktop (next to the speech
+/// models), else the app's data folder (Android).
+///
+/// Not `%APPDATA%` on Windows: apps started from inside a packaged (MSIX) app, such as a dev
+/// build run from a terminal inside one, get their AppData writes redirected to a private copy,
+/// so a dev run and the installed app saw different data, and a database and its journal ended up
+/// in different places (one stale), which looked like corruption. The home folder isn't
+/// redirected.
+fn data_dir(app: &tauri::App) -> tauri::Result<std::path::PathBuf> {
+    if let Some(d) = std::env::var_os("ALMOND_DATA_DIR").filter(|d| !d.is_empty()) {
+        return Ok(d.into());
+    }
+    if cfg!(any(target_os = "android", target_os = "ios")) {
+        return app.path().app_data_dir();
+    }
+    Ok(app.path().home_dir()?.join(".almond").join("data"))
+}
+
 fn handle(invoke: Invoke) -> bool {
     let api = invoke.message.webview().state::<Api>().inner().clone();
     let method = method_name(invoke.message.command());
@@ -42,10 +60,14 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
-            let data_dir = app.path().app_data_dir()?;
+            let data_dir = data_dir(app)?;
             let mut cfg = CoreConfig::new(data_dir, device_name());
             // Opened from the Start menu: start Ollama too if it isn't running.
             cfg.start_ollama = true;
+            // Data used to live in the app's AppData folder; its device key is adopted.
+            if let Ok(old) = app.path().app_data_dir() {
+                cfg.previous_data_dirs.push(old);
+            }
             let api = tauri::async_runtime::block_on(Core::open(cfg))?;
 
             // forward core notifications to the UI

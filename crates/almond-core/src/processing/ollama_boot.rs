@@ -30,8 +30,14 @@ fn reachable(addr: SocketAddr) -> bool {
 
 /// `ollama` on PATH, else the default install locations.
 fn find_ollama() -> Option<PathBuf> {
-    let exe = if cfg!(windows) { "ollama.exe" } else { "ollama" };
-    let on_path = std::env::var_os("PATH").into_iter().flat_map(|p| std::env::split_paths(&p).collect::<Vec<_>>());
+    let exe = if cfg!(windows) {
+        "ollama.exe"
+    } else {
+        "ollama"
+    };
+    let on_path = std::env::var_os("PATH")
+        .into_iter()
+        .flat_map(|p| std::env::split_paths(&p).collect::<Vec<_>>());
     let defaults = [
         std::env::var_os("LOCALAPPDATA").map(|d| PathBuf::from(d).join("Programs").join("Ollama")),
         Some(PathBuf::from("/usr/local/bin")),
@@ -55,7 +61,9 @@ pub(crate) fn ensure_running(core: &Arc<Core>) {
             return;
         }
         let Some(bin) = find_ollama() else {
-            tracing::warn!("Ollama is not running and was not found; AI notes need it (https://ollama.com)");
+            tracing::warn!(
+                "Ollama is not running and was not found; AI notes need it (https://ollama.com)"
+            );
             return;
         };
         let mut cmd = std::process::Command::new(&bin);

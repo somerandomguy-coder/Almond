@@ -31,7 +31,7 @@ pub mod sqlite;
 pub use almond_types as types;
 pub use blobs::FsBlobStore;
 pub use notes::{doc_text, export_since, notes_update_event, validate_update};
-pub use recover::{LAST_RECOVERY_KEY, RecoveryReport, open_or_recover};
+pub use recover::{LAST_RECOVERY_KEY, RecoveryReport, database_owner, open_or_recover};
 pub use sqlite::{BlobInfo, SqliteStore};
 
 #[cfg(test)]

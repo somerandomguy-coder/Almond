@@ -619,13 +619,16 @@ fn real_damaged_database() {
             std::fs::copy(&p, dir.join(f)).unwrap();
         }
     }
-    // The real DB belongs to whichever device wrote it; read its id from meta via a raw open.
-    let owner: String = rusqlite::Connection::open(dir.join("almond.db"))
-        .unwrap()
-        .query_row("SELECT value FROM meta WHERE key='device'", [], |r| {
-            r.get(0)
-        })
-        .unwrap();
+    // The real DB belongs to whichever device wrote it: ALMOND_RECOVER_DEVICE, else its meta row.
+    // (Opening it read-write here would checkpoint a stale journal into it before the test.)
+    let owner: String = std::env::var("ALMOND_RECOVER_DEVICE").unwrap_or_else(|_| {
+        rusqlite::Connection::open(dir.join("almond.db"))
+            .unwrap()
+            .query_row("SELECT value FROM meta WHERE key='device'", [], |r| {
+                r.get(0)
+            })
+            .unwrap()
+    });
     let (s, report) = open_or_recover(dir.join("almond.db"), DeviceId(owner)).unwrap();
     println!("{report:#?}");
     let meetings = s.list_meetings(&MeetingQuery::default()).unwrap();

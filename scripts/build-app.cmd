@@ -7,8 +7,9 @@ rem
 rem Result: %USERPROFILE%\.almond\t\release\bundle\nsis\Almond_<version>_x64-setup.exe
 rem It installs for the current user (no admin) with a Start menu entry. The installed app needs
 rem what this PC already has: the CUDA toolkit on PATH (GPU speech) and Ollama (AI notes), which
-rem starts with Windows. Speech models stay in %USERPROFILE%\.almond\models; meetings stay in
-rem %APPDATA%\dev.almond.app, shared with `scripts\dev-gpu.cmd` (close one before opening the other).
+rem starts with Windows. Speech models are in %USERPROFILE%\.almond\models, meetings in
+rem %USERPROFILE%\.almond\data (ALMOND_DATA_DIR overrides), shared with `scripts\dev-gpu.cmd`: close
+rem one before opening the other.
 rem
 rem Build needs the same tools as dev-gpu.cmd (VS 2022 Build Tools, CUDA, LLVM). The first
 rem build takes a while; CARGO_BUILD_JOBS (default 6) keeps the CPU from running flat out.

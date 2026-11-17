@@ -28,6 +28,9 @@ pub struct NodeConfig {
     pub sync: SyncOptions,
     /// Defaults to [`default_secret_store`] in `data_dir`.
     pub secrets: Option<Arc<dyn SecretStore>>,
+    /// Folders this data used to live in. The device key is stored per folder path, so after the
+    /// data moves, the key that owns the database is found under one of these and adopted.
+    pub previous_data_dirs: Vec<PathBuf>,
 }
 
 impl NodeConfig {
@@ -41,8 +44,50 @@ impl NodeConfig {
             iroh: IrohConfig::default(),
             sync: SyncOptions::default(),
             secrets: None,
+            previous_data_dirs: vec![],
         }
     }
+}
+
+/// The database in `data_dir` belongs to a device whose key isn't this folder's (the data was
+/// moved): take the owner's key from a previous folder's store. The key it replaces is kept under
+/// `device_key.replaced-<unix ms>`.
+fn adopt_moved_key(
+    secrets: &dyn SecretStore,
+    data_dir: &std::path::Path,
+    previous: &[PathBuf],
+) -> Result<()> {
+    use almond_types::secrets::keys;
+    let Some(owner) = almond_store::database_owner(&data_dir.join("almond.db")) else {
+        return Ok(());
+    };
+    let current = secrets.get(keys::DEVICE_KEY)?;
+    let id_of = |k: &[u8]| -> Option<String> {
+        let arr: [u8; 32] = k.try_into().ok()?;
+        Some(iroh::SecretKey::from_bytes(&arr).public().to_string())
+    };
+    if current.as_deref().and_then(id_of).as_deref() == Some(owner.as_str()) {
+        return Ok(());
+    }
+    for dir in previous.iter().filter(|d| d.as_path() != data_dir) {
+        let Ok(Some(k)) = default_secret_store(dir).get(keys::DEVICE_KEY) else {
+            continue;
+        };
+        if id_of(&k).as_deref() != Some(owner.as_str()) {
+            continue;
+        }
+        if let Some(old) = &current {
+            let at = almond_types::time::now_ms();
+            secrets.set(&format!("{}.replaced-{at}", keys::DEVICE_KEY), old)?;
+        }
+        secrets.set(keys::DEVICE_KEY, &k)?;
+        tracing::warn!(
+            "data moved from {}: using its device key {owner} here",
+            dir.display()
+        );
+        return Ok(());
+    }
+    Ok(())
 }
 
 pub struct SyncNode {
@@ -62,6 +107,9 @@ impl SyncNode {
             .secrets
             .clone()
             .unwrap_or_else(|| default_secret_store(&cfg.data_dir));
+        if cfg.secrets.is_none() {
+            adopt_moved_key(secrets.as_ref(), &cfg.data_dir, &cfg.previous_data_dirs)?;
+        }
         let identity = DeviceIdentity::load_or_create(secrets.as_ref())?;
         let device = DeviceInfo {
             id: identity.device_id(),
@@ -116,5 +164,45 @@ impl SyncNode {
     pub async fn shutdown(&self) {
         self.server.abort();
         self.transport.shutdown().await;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::adopt_moved_key;
+    use crate::identity::DeviceIdentity;
+    use crate::secrets::default_secret_store;
+    use almond_types::secrets::keys;
+
+    #[test]
+    fn a_moved_database_keeps_its_device_key() {
+        let (a, b) = (tempfile::tempdir().unwrap(), tempfile::tempdir().unwrap());
+        // Folder A: the device key and a database it owns.
+        let id_a = DeviceIdentity::load_or_create(default_secret_store(a.path()).as_ref()).unwrap();
+        drop(
+            almond_store::SqliteStore::open(a.path().join("almond.db"), id_a.device_id()).unwrap(),
+        );
+        // The data moves to B, where a fresh key was already made by mistake.
+        std::fs::copy(a.path().join("almond.db"), b.path().join("almond.db")).unwrap();
+        let sb = default_secret_store(b.path());
+        let stray = DeviceIdentity::load_or_create(sb.as_ref()).unwrap();
+        assert_ne!(stray.device_id(), id_a.device_id());
+
+        adopt_moved_key(sb.as_ref(), b.path(), &[a.path().to_path_buf()]).unwrap();
+        assert_eq!(
+            DeviceIdentity::load_or_create(sb.as_ref())
+                .unwrap()
+                .device_id(),
+            id_a.device_id()
+        );
+        // Idempotent, and nothing to do without a previous folder holding the owner's key.
+        adopt_moved_key(sb.as_ref(), b.path(), &[]).unwrap();
+        assert_eq!(
+            DeviceIdentity::load_or_create(sb.as_ref())
+                .unwrap()
+                .device_id(),
+            id_a.device_id()
+        );
+        assert!(sb.get(keys::DEVICE_KEY).unwrap().is_some());
     }
 }

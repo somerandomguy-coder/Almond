@@ -21,7 +21,7 @@
       "csp": null,
       "assetProtocol": {
         "enable": true,
-        "scope": ["$APPDATA/blobs/**", "$APPDATA/playback/**"]
+        "scope": ["$HOME/.almond/data/blobs/**", "$HOME/.almond/data/playback/**", "$APPDATA/blobs/**", "$APPDATA/playback/**"]
       }
     }
   },

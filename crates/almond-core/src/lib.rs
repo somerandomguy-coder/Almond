@@ -76,6 +76,9 @@ pub struct CoreConfig {
     /// running. Off by default (tests, CLIs); the desktop app turns it on so it works from a
     /// Start-menu click without starting Ollama first.
     pub start_ollama: bool,
+    /// Where the data used to live (e.g. `%APPDATA%\dev.almond.app`): the device key stored for
+    /// that folder is adopted when it owns the database (see `almond_sync::NodeConfig`).
+    pub previous_data_dirs: Vec<PathBuf>,
 }
 
 impl CoreConfig {
@@ -104,6 +107,7 @@ impl CoreConfig {
             network: true,
             detect_gpu: true,
             start_ollama: false,
+            previous_data_dirs: vec![],
         }
     }
 }
@@ -158,6 +162,7 @@ impl Core {
         node_cfg.platform = cfg.platform.clone();
         node_cfg.app_version = cfg.app_version.clone();
         node_cfg.capabilities = cfg.capabilities.clone();
+        node_cfg.previous_data_dirs = cfg.previous_data_dirs.clone();
         if !cfg.network {
             node_cfg.iroh = almond_sync::IrohConfig {
                 port: 0,

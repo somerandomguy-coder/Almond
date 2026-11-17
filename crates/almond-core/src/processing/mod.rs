@@ -15,8 +15,8 @@ mod actions;
 mod api;
 pub mod caps;
 mod jobloop;
-mod ollama_boot;
 pub(crate) mod offload;
+mod ollama_boot;
 mod procs;
 mod stubs;
 

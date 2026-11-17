@@ -54,6 +54,14 @@ pub fn open_or_recover(
     if path.exists()
         && let Some(problem) = precheck(path)
     {
+        // A stale journal (-wal) next to an intact database also fails the check: replaying it
+        // rolls pages back. Then the database alone is the newest state, and salvaging it would
+        // lose data.
+        if let Some(report) = set_aside_stale_journal(path, &problem)? {
+            let store = SqliteStore::open(path, device)?;
+            store.kv_set(LAST_RECOVERY_KEY, &serde_json::to_string(&report)?)?;
+            return Ok((store, Some(report)));
+        }
         tracing::error!(
             "database {} is damaged ({problem}); recovering",
             path.display()
@@ -79,6 +87,19 @@ pub fn open_or_recover(
     Ok((store, Some(report)))
 }
 
+/// The device that owns the database at `path` (its `meta.device`), read without changing
+/// anything; `None` if there is no readable database.
+pub fn database_owner(path: &Path) -> Option<String> {
+    if !path.exists() {
+        return None;
+    }
+    let c = Connection::open_with_flags(path, OpenFlags::SQLITE_OPEN_READ_ONLY).ok()?;
+    c.query_row("SELECT value FROM meta WHERE key = 'device'", [], |r| {
+        r.get(0)
+    })
+    .ok()
+}
+
 /// `Some(reason)` if the file at `path` fails `PRAGMA quick_check` (or can't be read at all).
 fn precheck(path: &Path) -> Option<String> {
     let c = match Connection::open_with_flags(path, OpenFlags::SQLITE_OPEN_READ_ONLY) {
@@ -90,6 +111,68 @@ fn precheck(path: &Path) -> Option<String> {
         Ok(r) => Some(r),
         Err(e) => Some(e.to_string()),
     }
+}
+
+/// The database fails the check *with* its `-wal` but passes *without* it: move the journal
+/// (and `-shm`) into `stale-journal-<unix ms>/` (never deleted) and use the database as is.
+/// Tried on a copy first, so nothing moves unless it works. `None` when there is no journal or
+/// the database is damaged on its own too.
+fn set_aside_stale_journal(path: &Path, problem: &str) -> Result<Option<RecoveryReport>> {
+    let name = path
+        .file_name()
+        .ok_or_else(|| Error::Invalid("database path has no file name".into()))?
+        .to_string_lossy()
+        .to_string();
+    let wal = path.with_file_name(format!("{name}-wal"));
+    if !wal.exists() {
+        return Ok(None);
+    }
+    let at = now_ms();
+    let dir = path
+        .parent()
+        .unwrap_or(Path::new("."))
+        .join(format!("stale-journal-{at}"));
+    std::fs::create_dir_all(&dir)?;
+    let probe = dir.join(format!("probe-{name}"));
+    std::fs::copy(path, &probe)?;
+    let intact = {
+        let c = Connection::open(&probe).map_err(sqlerr)?;
+        let ok = c
+            .query_row("PRAGMA quick_check(1)", [], |r| r.get::<_, String>(0))
+            .is_ok_and(|r| r == "ok");
+        let events: i64 = if ok {
+            c.query_row("SELECT count(*) FROM events", [], |r| r.get(0))
+                .unwrap_or(0)
+        } else {
+            0
+        };
+        ok.then_some(events)
+    };
+    for suffix in ["", "-wal", "-shm"] {
+        let _ = std::fs::remove_file(dir.join(format!("probe-{name}{suffix}")));
+    }
+    let Some(events) = intact else {
+        let _ = std::fs::remove_dir(&dir);
+        return Ok(None);
+    };
+    for suffix in ["-wal", "-shm"] {
+        let from = path.with_file_name(format!("{name}{suffix}"));
+        if from.exists() {
+            std::fs::rename(&from, dir.join(format!("{name}{suffix}")))?;
+        }
+    }
+    tracing::warn!(
+        "database {} was fine without its journal ({problem}); journal moved to {}",
+        path.display(),
+        dir.display()
+    );
+    Ok(Some(RecoveryReport {
+        reason: format!("{problem} (a stale journal; the database itself was intact)"),
+        backup_dir: dir,
+        events_recovered: events as usize,
+        at,
+        ..Default::default()
+    }))
 }
 
 fn is_corruption(e: &Error) -> bool {
